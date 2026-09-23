@@ -54,7 +54,7 @@ jobs:
         run: ./gradlew --no-daemon :app:assembleDebug
 
       - name: Compile Android tests
-        run: ./gradlew --no-daemon :app:compileDebugAndroidTest
+        run: ./gradlew --no-daemon :app:compileDebugAndroidTestSources
 
       - name: Verify APK signing certificate
         run: |
