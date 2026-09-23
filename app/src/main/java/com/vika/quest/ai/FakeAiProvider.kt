@@ -2,63 +2,31 @@ package com.vika.quest.ai
 
 class FakeAiProvider : AiProvider {
     override suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft {
-        require(context.availableMinutes > 0) { "可用时间必须大于 0" }
-        require(context.energy in 1..5) { "精力必须在 1 到 5 之间" }
-
-        val goal = context.activeGoals
-            .sortedByDescending(GoalSnapshot::priority)
-            .firstOrNull()
-            ?: error("至少需要一个目标才能生成 Quest")
-        val previous = context.recentQuests.firstOrNull { it.goalId == goal.id && it.completed }
-        val estimatedMinutes = minOf(context.availableMinutes, 15)
-        val resourceHint = context.resources
-            .map { it.displayName() }
-            .sorted()
-            .joinToString("、")
-
+        val intention = context.userIntention.trim()
+        val project = context.projects.firstOrNull()
+        val goal = context.goals.firstOrNull()
+        val subject = intention.ifBlank { project?.name ?: goal?.name ?: "当前最重要的方向" }
+        val previous = context.rejectedQuest
         return AiQuestDraft(
-            goalId = goal.id,
-            skill = null,
-            title = "为“${goal.name}”完成一个可验证的小成果",
-            estimatedMinutes = estimatedMinutes,
-            instruction = buildString {
-                append("用 $estimatedMinutes 分钟，围绕“${goal.name}”完成一个可以保存或展示的具体成果。")
-                if (resourceHint.isNotBlank()) {
-                    append("当前可用条件：$resourceHint。")
-                }
-                append("不要只浏览资料，请留下文字、清单、草稿或截图证据。")
-                if (previous != null) {
-                    append("先查看上一次任务“${previous.title}”的结果，在它的基础上继续，不要从头开始。")
-                }
-            },
-            completionCriteria = listOf(
-                "留下一个可查看的成果（文字、清单、草稿或截图）",
-                "写下一句话，说明下次从哪里继续",
-            ),
-            difficulty = if (context.energy <= 2) 1 else 2,
-            chainTitle = context.unfinishedChain?.title ?: "持续推进“${goal.name}”",
-            reason = if (previous == null) {
-                "建立该目标的第一个可观察进展。"
-            } else {
-                "承接最近一次已完成的 Quest，保持进展连续。"
-            },
+            title = "写出“${subject.take(28)}”的三项下一步清单",
+            reason = if (previous == null) "把当前方向收敛成今天可以执行和保存的具体下一步。" else "已避开刚才被拒绝的任务，并把范围缩小为一份可直接使用的清单。",
+            estimatedMinutes = minOf(15, context.availableMinutes),
+            steps = listOf("打开备忘录，写下你希望推进的具体结果", "列出三个按顺序可执行的下一步，每步写清动作和对象", "圈出最先执行的一步，并补充开始所需的材料"),
+            completionCriteria = listOf("清单中恰好包含三个可执行步骤", "每一步都有明确动作和对象", "已标记下一次首先执行的步骤"),
+            expectedOutput = "一份可保存的三步行动清单，其中第一步已明确标记。",
+            relatedGoalId = goal?.id,
+            relatedProjectId = project?.id,
         )
     }
 
-    private fun QuestResource.displayName(): String = when (this) {
-        QuestResource.PHONE -> "手机"
-        QuestResource.COMPUTER -> "电脑"
-        QuestResource.QUIET_THINKING -> "安静思考"
-        QuestResource.CAN_MOVE_OR_EXERCISE -> "可以走动或运动"
-    }
+    override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = AiQuestResultAnalysis(
+        summary = "已完成“${context.quest.title}”，并留下了可继续使用的结果。",
+        evidence = listOf(context.resultText.take(200)),
+        insights = listOf("下一步应直接承接本次产出，而不是重新开始。"),
+        projectProgress = context.resultText.take(500),
+        suggestedNextStep = "打开本次产出，执行其中标记的第一步。",
+        memoriesToSave = emptyList(),
+    )
 
-    override suspend fun analyzeQuestResult(input: QuestResultInput): QuestResultAnalysis =
-        QuestResultAnalysis(
-            summary = if (input.feedback.completed) {
-                "已完成：${input.feedback.result}"
-            } else {
-                "未完成：${input.feedback.skipReason.orEmpty()}"
-            },
-            suggestedNextFocus = input.feedback.result.takeIf(String::isNotBlank),
-        )
+    override suspend fun testConnection(settings: AiConnectionSettings) = AiConnectionResult(true, "离线测试提供器可用")
 }
