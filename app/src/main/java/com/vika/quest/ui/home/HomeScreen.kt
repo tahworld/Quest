@@ -43,18 +43,18 @@ fun HomeScreen(
                 .padding(horizontal = 24.dp, vertical = 28.dp),
         ) {
             Text(
-                text = "What can I do right now?",
+                text = "我现在能做什么？",
                 style = MaterialTheme.typography.headlineLarge,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = state.goal?.name ?: "Loading your goal…",
+                text = state.goal?.name ?: "正在加载目标…",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(Modifier.height(36.dp))
-            SectionLabel("Available time")
+            SectionLabel("可用时间（分钟）")
             Spacer(Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -65,14 +65,14 @@ fun HomeScreen(
                         selected = state.selectedMinutes == minutes,
                         onClick = { viewModel.selectMinutes(minutes) },
                         modifier = Modifier.weight(1f),
-                        label = { Text("$minutes min") },
+                        label = { Text(minutes.toString()) },
                     )
                 }
             }
 
             Spacer(Modifier.height(28.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
-                SectionLabel("Energy")
+                SectionLabel("当前精力")
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = state.energy.toString(),
@@ -88,17 +88,17 @@ fun HomeScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-            SectionLabel("Available resources")
+            SectionLabel("可用条件")
             Spacer(Modifier.height(10.dp))
             ResourceRow(
-                first = ResourceOption(QuestResource.PHONE, "Phone"),
-                second = ResourceOption(QuestResource.COMPUTER, "Computer"),
+                first = ResourceOption(QuestResource.PHONE, "手机"),
+                second = ResourceOption(QuestResource.COMPUTER, "电脑"),
                 selected = state.resources,
                 onToggle = viewModel::toggleResource,
             )
             ResourceRow(
-                first = ResourceOption(QuestResource.QUIET_THINKING, "Quiet thinking"),
-                second = ResourceOption(QuestResource.CAN_MOVE_OR_EXERCISE, "Can move/exercise"),
+                first = ResourceOption(QuestResource.QUIET_THINKING, "安静思考"),
+                second = ResourceOption(QuestResource.CAN_MOVE_OR_EXERCISE, "可以走动/运动"),
                 selected = state.resources,
                 onToggle = viewModel::toggleResource,
             )
@@ -117,7 +117,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = state.goal != null && !state.isGenerating,
             ) {
-                Text(if (state.isGenerating) "Creating your Quest…" else "Give me a Quest")
+                Text(if (state.isGenerating) "正在生成任务…" else "给我一个任务")
             }
         }
     }

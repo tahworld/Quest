@@ -56,12 +56,12 @@ class HomeViewModel(
     }
 
     fun selectMinutes(minutes: Int) {
-        require(minutes in setOf(5, 15, 30, 60)) { "Unsupported duration" }
+        require(minutes in setOf(5, 15, 30, 60)) { "不支持该时间选项" }
         _uiState.update { it.copy(selectedMinutes = minutes, errorMessage = null) }
     }
 
     fun selectEnergy(energy: Int) {
-        require(energy in 1..5) { "Energy must be between 1 and 5" }
+        require(energy in 1..5) { "精力必须在 1 到 5 之间" }
         _uiState.update { it.copy(energy = energy, errorMessage = null) }
     }
 
@@ -79,7 +79,7 @@ class HomeViewModel(
         if (current.isGenerating || current.generatedQuestId != null) return
         val goal = current.goal
         if (goal == null) {
-            _uiState.update { it.copy(errorMessage = "No active goal is available.") }
+            _uiState.update { it.copy(errorMessage = "当前没有可用目标。") }
             return
         }
 
@@ -102,7 +102,7 @@ class HomeViewModel(
                 _uiState.update {
                     it.copy(
                         isGenerating = false,
-                        errorMessage = error.message ?: "Could not generate a Quest. Try again.",
+                        errorMessage = error.message ?: "暂时无法生成任务，请重试。",
                     )
                 }
             }

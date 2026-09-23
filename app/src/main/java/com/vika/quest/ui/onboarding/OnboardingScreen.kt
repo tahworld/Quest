@@ -39,12 +39,12 @@ fun OnboardingScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "What do you want to move forward?",
+                text = "你现在最想推进什么？",
                 style = MaterialTheme.typography.headlineLarge,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Tell Quest what you want to improve, build, learn or accomplish.",
+                text = "告诉 Quest，你想提升、构建、学习或完成什么。",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -53,7 +53,7 @@ fun OnboardingScreen(
                 value = state.input,
                 onValueChange = viewModel::onInputChanged,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Your goal") },
+                label = { Text("你的目标") },
                 minLines = 4,
                 maxLines = 7,
                 enabled = !state.isSubmitting,
@@ -64,7 +64,7 @@ fun OnboardingScreen(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Examples: Build commercial skills · Learn Android development · Improve my writing",
+                text = "例如：提升商业能力 · 学习 Android 开发 · 提高写作水平",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -74,7 +74,7 @@ fun OnboardingScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.isSubmitting,
             ) {
-                Text(if (state.isSubmitting) "Saving…" else "Start")
+                Text(if (state.isSubmitting) "正在保存…" else "开始")
             }
         }
     }

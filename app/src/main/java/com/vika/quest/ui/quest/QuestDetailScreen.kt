@@ -37,7 +37,7 @@ fun QuestDetailScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
             TextButton(onClick = onBack) {
-                Text("Back")
+                Text("返回")
             }
 
             if (state.isLoading) {
@@ -51,7 +51,7 @@ fun QuestDetailScreen(
             if (quest == null) {
                 Spacer(Modifier.height(32.dp))
                 Text(
-                    text = state.errorMessage ?: "Quest not found.",
+                    text = state.errorMessage ?: "未找到这个任务。",
                     color = MaterialTheme.colorScheme.error,
                 )
                 return@Column
@@ -71,12 +71,12 @@ fun QuestDetailScreen(
             Spacer(Modifier.height(12.dp))
             Row {
                 Text(
-                    text = "${quest.estimatedMinutes} minutes",
+                    text = "预计 ${quest.estimatedMinutes} 分钟",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "  ·  Difficulty ${quest.difficulty}/5",
+                    text = "  ·  难度 ${quest.difficulty}/5",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -92,7 +92,7 @@ fun QuestDetailScreen(
 
             Spacer(Modifier.height(28.dp))
             Text(
-                text = "Done when",
+                text = "完成标准",
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(10.dp))
@@ -120,11 +120,11 @@ fun QuestDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isStarting,
                 ) {
-                    Text(if (state.isStarting) "Starting…" else "Start Quest")
+                    Text(if (state.isStarting) "正在开始…" else "开始任务")
                 }
             } else if (quest.status == QuestStatus.ACTIVE) {
                 Text(
-                    text = "Quest in progress",
+                    text = "任务进行中",
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 16.dp),

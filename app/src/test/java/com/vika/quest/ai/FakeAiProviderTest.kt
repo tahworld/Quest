@@ -17,6 +17,7 @@ class FakeAiProviderTest {
         assertEquals("goal-1", draft.goalId)
         assertEquals(5, draft.estimatedMinutes)
         assertTrue(draft.completionCriteria.isNotEmpty())
+        assertTrue(draft.instruction.contains("手机"))
     }
 
     @Test

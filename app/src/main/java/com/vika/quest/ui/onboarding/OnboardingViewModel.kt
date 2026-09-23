@@ -32,7 +32,7 @@ class OnboardingViewModel(
         val text = current.input.trim()
         if (current.isSubmitting || current.isComplete) return
         if (text.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Enter a goal to continue.") }
+            _uiState.update { it.copy(errorMessage = "请输入一个目标后继续。") }
             return
         }
 
@@ -50,7 +50,7 @@ class OnboardingViewModel(
                 _uiState.update {
                     it.copy(
                         isSubmitting = false,
-                        errorMessage = error.message ?: "Could not save your goal. Try again.",
+                        errorMessage = error.message ?: "暂时无法保存目标，请重试。",
                     )
                 }
             }

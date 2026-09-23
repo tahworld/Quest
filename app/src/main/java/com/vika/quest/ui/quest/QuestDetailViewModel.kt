@@ -46,7 +46,7 @@ class QuestDetailViewModel(
                         quest = quest,
                         goalName = goalName,
                         isStarting = false,
-                        errorMessage = if (quest == null) "Quest not found." else null,
+                        errorMessage = if (quest == null) "未找到这个任务。" else null,
                     )
                 }
             }
@@ -68,7 +68,7 @@ class QuestDetailViewModel(
                 _uiState.update {
                     it.copy(
                         isStarting = false,
-                        errorMessage = error.message ?: "Could not start this Quest. Try again.",
+                        errorMessage = error.message ?: "暂时无法开始任务，请重试。",
                     )
                 }
             }

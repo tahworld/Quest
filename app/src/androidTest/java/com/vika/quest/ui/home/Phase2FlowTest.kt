@@ -43,8 +43,8 @@ class Phase2FlowTest {
     @Test
     fun repeatedGenerationTap_createsOneQuest_andStartPersistsActiveStatus() = runBlocking {
         goalRepository.createGoal(
-            name = "Build commercial skills",
-            description = "Build commercial skills",
+            name = "提升商业能力",
+            description = "提升商业能力",
         )
         val homeViewModel = HomeViewModel(
             goalRepository = goalRepository,
