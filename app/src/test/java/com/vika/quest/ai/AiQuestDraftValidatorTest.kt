@@ -1,35 +1,13 @@
 package com.vika.quest.ai
 
-import org.junit.Assert.assertThrows
+import org.junit.Assert.*
 import org.junit.Test
 
 class AiQuestDraftValidatorTest {
-    @Test
-    fun validate_rejectsUnknownGoal() {
-        val context = QuestGenerationContext(
-            activeGoals = listOf(GoalSnapshot("known", "目标", "", 0)),
-            skills = emptyList(),
-            recentQuests = emptyList(),
-            recentFeedback = emptyList(),
-            availableMinutes = 15,
-            energy = 3,
-            resources = emptySet(),
-            unfinishedChain = null,
-        )
-        val draft = AiQuestDraft(
-            goalId = "unknown",
-            skill = null,
-            title = "任务",
-            estimatedMinutes = 5,
-            instruction = "立即执行",
-            completionCriteria = listOf("留下结果"),
-            difficulty = 1,
-            chainTitle = null,
-            reason = "测试",
-        )
-
-        assertThrows(IllegalArgumentException::class.java) {
-            AiQuestDraftValidator().validate(draft, context)
-        }
-    }
+    private val context = QuestGenerationContext("研究 AI 产品获客", 15, 3, setOf(QuestResource.PHONE), listOf(GoalSnapshot("g", "商业能力", "", 1)), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+    @Test fun acceptsConcreteBoundedQuest() { val result = AiQuestDraftValidator().validate(validDraft(), context); assertEquals(15, result.estimatedMinutes); assertEquals("g", result.goalId) }
+    @Test fun rejectsUnknownGoal() { assertThrows(IllegalArgumentException::class.java) { AiQuestDraftValidator().validate(validDraft().copy(relatedGoalId = "bad"), context) } }
+    @Test fun rejectsGenericTitle() { assertThrows(IllegalArgumentException::class.java) { AiQuestDraftValidator().validate(validDraft().copy(title = "继续推进 AI 产品"), context) } }
+    @Test fun rejectsOvertime() { assertThrows(IllegalArgumentException::class.java) { AiQuestDraftValidator().validate(validDraft().copy(estimatedMinutes = 30), context) } }
+    private fun validDraft() = AiQuestDraft("记录三个 AI 产品的获客入口", "直接承接用户的获客研究方向。", 15, listOf("搜索三个产品官网", "记录每个产品的首个获客入口"), listOf("记录了三个不同产品", "每个产品包含入口证据"), "一份含三个产品及证据链接的表格", "g", null)
 }
