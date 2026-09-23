@@ -1,0 +1,30 @@
+name: Apply launcher icon
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Apply launcher icon files
+        run: |
+          unzip -o Quest-Launcher-Icon-update.zip -d .
+          rm Quest-Launcher-Icon-update.zip
+
+      - name: Commit launcher icon
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Quest adaptive launcher icon"
+          git push
