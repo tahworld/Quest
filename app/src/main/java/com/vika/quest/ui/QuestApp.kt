@@ -1,111 +1,58 @@
 package com.vika.quest.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vika.quest.di.AppContainer
-import com.vika.quest.ui.home.HomeScreen
-import com.vika.quest.ui.home.HomeViewModel
-import com.vika.quest.ui.onboarding.OnboardingScreen
-import com.vika.quest.ui.onboarding.OnboardingViewModel
-import com.vika.quest.ui.quest.QuestDetailScreen
-import com.vika.quest.ui.quest.QuestDetailViewModel
+import com.vika.quest.ui.home.*
+import com.vika.quest.ui.onboarding.*
+import com.vika.quest.ui.project.*
+import com.vika.quest.ui.quest.*
+import com.vika.quest.ui.result.*
+import com.vika.quest.ui.settings.*
 
-@Composable
-fun QuestApp(container: AppContainer) {
-    val appViewModel: AppViewModel = viewModel(
-        factory = remember(container) {
-            ViewModelFactory { AppViewModel(container.goalRepository) }
-        },
-    )
-    val startRoute by appViewModel.startRoute.collectAsStateWithLifecycle()
-
-    if (startRoute == null) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
-    val navController = rememberNavController()
-    NavHost(
-        navController = navController,
-        startDestination = checkNotNull(startRoute),
-    ) {
+@Composable fun QuestApp(container: AppContainer) {
+    val appVm: AppViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AppViewModel(container.goalRepository) } })
+    val start by appVm.startRoute.collectAsStateWithLifecycle()
+    if (start == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
+    val nav = rememberNavController()
+    NavHost(navController = nav, startDestination = checkNotNull(start)) {
         composable(Routes.ONBOARDING) {
-            val onboardingViewModel: OnboardingViewModel = viewModel(
-                factory = remember(container) {
-                    ViewModelFactory { OnboardingViewModel(container.goalRepository) }
-                },
-            )
-            OnboardingScreen(
-                viewModel = onboardingViewModel,
-                onComplete = {
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-            )
+            val vm: OnboardingViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> OnboardingViewModel(container.goalRepository) } })
+            OnboardingScreen(vm) { nav.navigate(Routes.HOME) { popUpTo(Routes.ONBOARDING) { inclusive = true }; launchSingleTop = true } }
         }
-
-        composable(Routes.HOME) {
-            val homeViewModel: HomeViewModel = viewModel(
-                factory = remember(container) {
-                    ViewModelFactory {
-                        HomeViewModel(
-                            goalRepository = container.goalRepository,
-                            questRepository = container.questRepository,
-                            aiProvider = container.aiProvider,
-                            validator = container.aiQuestDraftValidator,
-                        )
-                    }
-                },
-            )
-            HomeScreen(
-                viewModel = homeViewModel,
-                onQuestGenerated = { questId ->
-                    navController.navigate(Routes.quest(questId))
-                    homeViewModel.consumeGeneratedQuest(questId)
-                },
-            )
+        composable(Routes.HOME) { entry ->
+            val vm: HomeViewModel = viewModel(factory = remember(container) { ViewModelFactory { extras -> HomeViewModel(extras.createSavedStateHandle(), container.contextBuilder, container.questRepository, container.aiProvider, container.aiQuestDraftValidator) } })
+            val transfer by entry.savedStateHandle.getStateFlow("conditions_nonce", 0L).collectAsStateWithLifecycle()
+            LaunchedEffect(transfer) { if (transfer > 0) vm.applyConditions(entry.savedStateHandle[HomeViewModel.INTENTION] ?: "", entry.savedStateHandle[HomeViewModel.MINUTES] ?: 15, entry.savedStateHandle[HomeViewModel.ENERGY] ?: 3, entry.savedStateHandle.get<ArrayList<String>>(HomeViewModel.RESOURCES).orEmpty()) }
+            HomeScreen(vm, onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) }, onProjects = { nav.navigate(Routes.PROJECTS) }, onSettings = { nav.navigate(Routes.SETTINGS) })
         }
-
-        composable(
-            route = Routes.QUEST,
-            arguments = listOf(navArgument("questId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val questId = checkNotNull(backStackEntry.arguments?.getString("questId"))
-            val questViewModel: QuestDetailViewModel = viewModel(
-                factory = remember(container, questId) {
-                    ViewModelFactory {
-                        QuestDetailViewModel(
-                            questId = questId,
-                            goalRepository = container.goalRepository,
-                            questRepository = container.questRepository,
-                        )
-                    }
-                },
-            )
-            QuestDetailScreen(
-                viewModel = questViewModel,
-                onBack = { navController.popBackStack() },
-            )
+        composable(Routes.QUEST, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
+            val id = checkNotNull(entry.arguments?.getString("questId"))
+            val vm: QuestDetailViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> QuestDetailViewModel(id, container.goalRepository, container.projectRepository, container.memoryRepository, container.questRepository, container.contextBuilder, container.aiProvider, container.aiQuestDraftValidator, container.aiQuestResultValidator) } })
+            QuestDetailScreen(vm, onBack = { nav.popBackStack() }, onAdjusted = { intention, minutes, energy, resources -> transferToHome(nav, intention, minutes, energy, resources) }, onReplaced = { newId -> nav.popBackStack(); nav.navigate(Routes.quest(newId)) }, onResult = { nav.navigate(Routes.result(it)) }, onAbandoned = { nav.popBackStack() })
         }
+        composable(Routes.RESULT, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
+            val id = checkNotNull(entry.arguments?.getString("questId")); val vm: ResultViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> ResultViewModel(id, container.questRepository) } })
+            ResultScreen(vm, onDone = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true } }, onContinue = { next -> transferToHome(nav, next, 15, 3, listOf("PHONE")) })
+        }
+        composable(Routes.PROJECTS) { val vm: ProjectViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> ProjectViewModel(container.projectRepository) } }); ProjectScreen(vm) { nav.popBackStack() } }
+        composable(Routes.SETTINGS) { val vm: AiSettingsViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AiSettingsViewModel(container.aiSettingsStore, container.aiProvider) } }); AiSettingsScreen(vm) { nav.popBackStack() } }
     }
+}
+
+private fun transferToHome(nav: androidx.navigation.NavHostController, intention: String, minutes: Int, energy: Int, resources: List<String>) {
+    val entry = runCatching { nav.getBackStackEntry(Routes.HOME) }.getOrNull()
+    if (entry != null) {
+        entry.savedStateHandle[HomeViewModel.INTENTION] = intention; entry.savedStateHandle[HomeViewModel.MINUTES] = minutes; entry.savedStateHandle[HomeViewModel.ENERGY] = energy; entry.savedStateHandle[HomeViewModel.RESOURCES] = ArrayList(resources); entry.savedStateHandle["conditions_nonce"] = System.nanoTime()
+        nav.navigate(Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true }
+    } else nav.navigate(Routes.HOME)
 }

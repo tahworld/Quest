@@ -27,6 +27,10 @@ object Routes {
     const val ONBOARDING = "onboarding"
     const val HOME = "home"
     const val QUEST = "quest/{questId}"
+    const val RESULT = "result/{questId}"
+    const val PROJECTS = "projects"
+    const val SETTINGS = "settings"
 
     fun quest(questId: String): String = "quest/$questId"
+    fun result(questId: String): String = "result/$questId"
 }
