@@ -1,159 +1,37 @@
 package com.vika.quest.ui.home
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vika.quest.ai.QuestResource
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun HomeScreen(
-    viewModel: HomeViewModel,
-    onQuestGenerated: (String) -> Unit,
-) {
+fun HomeScreen(viewModel: HomeViewModel, onQuestGenerated: (String) -> Unit, onProjects: () -> Unit, onSettings: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-
-    LaunchedEffect(state.generatedQuestId) {
-        state.generatedQuestId?.let(onQuestGenerated)
-    }
-
-    Scaffold { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
-                .padding(horizontal = 24.dp, vertical = 28.dp),
-        ) {
-            Text(
-                text = "我现在能做什么？",
-                style = MaterialTheme.typography.headlineLarge,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = state.goal?.name ?: "正在加载目标…",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-
-            Spacer(Modifier.height(36.dp))
-            SectionLabel("可用时间（分钟）")
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf(5, 15, 30, 60).forEach { minutes ->
-                    FilterChip(
-                        selected = state.selectedMinutes == minutes,
-                        onClick = { viewModel.selectMinutes(minutes) },
-                        modifier = Modifier.weight(1f),
-                        label = { Text(minutes.toString()) },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(28.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                SectionLabel("当前精力")
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = state.energy.toString(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Slider(
-                value = state.energy.toFloat(),
-                onValueChange = { viewModel.selectEnergy(it.roundToInt()) },
-                valueRange = 1f..5f,
-                steps = 3,
-            )
-
+    LaunchedEffect(state.generatedQuestId) { state.generatedQuestId?.let(onQuestGenerated) }
+    Scaffold(topBar = { Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) { TextButton(onClick = onProjects) { Text("项目") }; TextButton(onClick = onSettings) { Text("AI 设置") } } }) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp)) {
+            Text("此刻，你想推进什么？", style = MaterialTheme.typography.headlineLarge)
+            Spacer(Modifier.height(8.dp)); Text("把脑子里的想法告诉 Quest。越具体，行动越贴近你的方向。", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(20.dp))
-            SectionLabel("可用条件")
-            Spacer(Modifier.height(10.dp))
-            ResourceRow(
-                first = ResourceOption(QuestResource.PHONE, "手机"),
-                second = ResourceOption(QuestResource.COMPUTER, "电脑"),
-                selected = state.resources,
-                onToggle = viewModel::toggleResource,
-            )
-            ResourceRow(
-                first = ResourceOption(QuestResource.QUIET_THINKING, "安静思考"),
-                second = ResourceOption(QuestResource.CAN_MOVE_OR_EXERCISE, "可以走动/运动"),
-                selected = state.resources,
-                onToggle = viewModel::toggleResource,
-            )
-
-            Spacer(Modifier.weight(1f))
-            state.errorMessage?.let { message ->
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-            Button(
-                onClick = viewModel::generateQuest,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = state.goal != null && !state.isGenerating,
-            ) {
-                Text(if (state.isGenerating) "正在生成任务…" else "给我一个任务")
-            }
+            OutlinedTextField(value = state.intention, onValueChange = viewModel::setIntention, modifier = Modifier.fillMaxWidth().heightIn(min = 128.dp), placeholder = { Text("例如：我想探索 AI 产品，但不知道从哪里开始。") }, label = { Text("我现在的想法") })
+            TextButton(onClick = viewModel::decideForMe) { Text(if (state.decideForMe) "✓ 不知道，由 Quest 决定" else "我不知道——替我决定") }
+            Spacer(Modifier.height(20.dp)); Text("可用时间", style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(5,15,30,60).forEach { value -> FilterChip(selected = state.selectedMinutes == value, onClick = { viewModel.selectMinutes(value) }, label = { Text("$value 分钟") }, modifier = Modifier.weight(1f)) } }
+            Spacer(Modifier.height(20.dp)); Row(Modifier.fillMaxWidth()) { Text("当前精力", style = MaterialTheme.typography.titleMedium); Spacer(Modifier.weight(1f)); Text("${state.energy}/5", color = MaterialTheme.colorScheme.primary) }
+            Slider(value = state.energy.toFloat(), onValueChange = { viewModel.selectEnergy(it.roundToInt()) }, valueRange = 1f..5f, steps = 3)
+            Spacer(Modifier.height(16.dp)); Text("可用条件", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(QuestResource.PHONE to "手机", QuestResource.COMPUTER to "电脑", QuestResource.QUIET_THINKING to "安静思考", QuestResource.CAN_MOVE_OR_EXERCISE to "可以走动/运动").forEach { (resource,label) -> FilterChip(selected = resource in state.resources, onClick = { viewModel.toggleResource(resource) }, label = { Text(label) }) } }
+            Spacer(Modifier.height(28.dp)); state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
+            Button(onClick = viewModel::generateQuest, modifier = Modifier.fillMaxWidth().height(54.dp), enabled = !state.isGenerating) { if (state.isGenerating) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) else Text("生成行动") }
+            Spacer(Modifier.height(24.dp))
         }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium,
-    )
-}
-
-private data class ResourceOption(
-    val resource: QuestResource,
-    val label: String,
-)
-
-@Composable
-private fun ResourceRow(
-    first: ResourceOption,
-    second: ResourceOption,
-    selected: Set<QuestResource>,
-    onToggle: (QuestResource) -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        FilterChip(
-            selected = first.resource in selected,
-            onClick = { onToggle(first.resource) },
-            label = { Text(first.label) },
-        )
-        Spacer(Modifier.width(8.dp))
-        FilterChip(
-            selected = second.resource in selected,
-            onClick = { onToggle(second.resource) },
-            label = { Text(second.label) },
-        )
     }
 }
