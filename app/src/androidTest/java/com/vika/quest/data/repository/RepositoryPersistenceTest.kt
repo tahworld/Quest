@@ -4,57 +4,24 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.vika.quest.data.local.QuestDatabase
-import com.vika.quest.model.NewQuest
+import com.vika.quest.model.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Before
-import org.junit.Test
+import org.junit.*
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RepositoryPersistenceTest {
-    private lateinit var database: QuestDatabase
-    private lateinit var goalRepository: GoalRepository
-    private lateinit var questRepository: QuestRepository
-
-    @Before
-    fun setUp() {
-        database = Room.inMemoryDatabaseBuilder(
-            InstrumentationRegistry.getInstrumentation().targetContext,
-            QuestDatabase::class.java,
-        ).allowMainThreadQueries().build()
-        goalRepository = GoalRepository(database.goalDao())
-        questRepository = QuestRepository(database.questDao())
+    private lateinit var db: QuestDatabase; private lateinit var goals: GoalRepository; private lateinit var quests: QuestRepository
+    @Before fun setup() { db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, QuestDatabase::class.java).allowMainThreadQueries().build(); goals = GoalRepository(db.goalDao()); quests = QuestRepository(db) }
+    @After fun close() = db.close()
+    @Test fun goalQuestResultAndRerollPersist() = runBlocking {
+        val goal = goals.createGoal("建立商业能力", "发现真实需求", createdAt = 1)
+        val first = quests.createQuest(newQuest(goal.id, "记录三个用户抱怨"), 2)
+        val second = quests.reroll(first.id, RejectionReason.LOW_VALUE, null, newQuest(goal.id, "比较三个竞品定价"), 3)
+        assertEquals(QuestStatus.ABANDONED, quests.getQuest(first.id)?.status); assertEquals(1, quests.getRecentRejections(5).size)
+        quests.startQuest(second.id); quests.completeQuest(second.id, NewQuestResult("保存了一份价格对比表", 12, DifficultyRating.APPROPRIATE, 4), 4)
+        assertEquals(QuestStatus.COMPLETED, quests.getQuest(second.id)?.status); assertEquals("保存了一份价格对比表", quests.getResult(second.id)?.resultText); assertEquals(2, quests.observeQuests().first().size)
     }
-
-    @After
-    fun tearDown() {
-        database.close()
-    }
-
-    @Test
-    fun goalAndQuest_arePersistedAndObservable() = runBlocking {
-        val goal = goalRepository.createGoal(
-            name = "建立商业能力",
-            description = "学习发现真实需求",
-            createdAt = 1L,
-        )
-        questRepository.createQuest(
-            newQuest = NewQuest(
-                goalId = goal.id,
-                title = "收集三个用户抱怨",
-                instruction = "搜索三个独立用户对现有产品的明确抱怨并记录证据。",
-                estimatedMinutes = 15,
-                completionCriteria = listOf("找到三个独立用户", "保存至少一项证据"),
-                difficulty = 2,
-            ),
-            createdAt = 2L,
-        )
-
-        assertEquals(1, goalRepository.observeGoals().first().size)
-        assertEquals(1, questRepository.observeQuests().first().size)
-        assertEquals(goal.id, questRepository.observeQuests().first().single().goalId)
-    }
+    private fun newQuest(goal: String, title: String) = NewQuest(goal, title = title, reason = "测试", steps = listOf("打开记录表", "写入三项证据"), instruction = "打开记录表并写入三项证据", estimatedMinutes = 15, completionCriteria = listOf("三项均已记录"), expectedOutput = "一份三项记录", sourceIntention = "研究市场", sourceAvailableMinutes = 15, sourceEnergy = 3, sourceResources = listOf("PHONE"))
 }
