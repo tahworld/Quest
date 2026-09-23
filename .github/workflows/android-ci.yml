@@ -30,10 +30,10 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.1.0"
 
       - name: Configure stable debug signing
+        if: ${{ secrets.QUEST_DEBUG_KEYSTORE_BASE64 != '' }}
         env:
           QUEST_DEBUG_KEYSTORE_BASE64: ${{ secrets.QUEST_DEBUG_KEYSTORE_BASE64 }}
         run: |
-          test -n "$QUEST_DEBUG_KEYSTORE_BASE64"
           signing_dir="$RUNNER_TEMP/android-user-home"
           mkdir -p "$signing_dir"
           printf '%s' "$QUEST_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$signing_dir/debug.keystore"
@@ -44,10 +44,13 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
 
-      - name: Build Debug APK and Android test APK
-        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+      - name: Build Debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Compile Android tests
+        run: ./gradlew --no-daemon :app:compileDebugAndroidTest
 
       - name: Verify APK signing certificate
         run: |
@@ -56,7 +59,7 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: quest-debug-apk
+          name: Quest-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
