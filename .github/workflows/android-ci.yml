@@ -11,8 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_USER_HOME: ${{ runner.temp }}/android-user-home
 
     steps:
       - name: Check out project
@@ -36,9 +34,11 @@ jobs:
           QUEST_DEBUG_KEYSTORE_BASE64: ${{ secrets.QUEST_DEBUG_KEYSTORE_BASE64 }}
         run: |
           test -n "$QUEST_DEBUG_KEYSTORE_BASE64"
-          mkdir -p "$ANDROID_USER_HOME"
-          printf '%s' "$QUEST_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_USER_HOME/debug.keystore"
-          keytool -list -keystore "$ANDROID_USER_HOME/debug.keystore" -storepass android -alias androiddebugkey > /dev/null
+          signing_dir="$RUNNER_TEMP/android-user-home"
+          mkdir -p "$signing_dir"
+          printf '%s' "$QUEST_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$signing_dir/debug.keystore"
+          keytool -list -keystore "$signing_dir/debug.keystore" -storepass android -alias androiddebugkey > /dev/null
+          echo "ANDROID_USER_HOME=$signing_dir" >> "$GITHUB_ENV"
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -48,6 +48,10 @@ jobs:
 
       - name: Build Debug APK and Android test APK
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+
+      - name: Verify APK signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7
