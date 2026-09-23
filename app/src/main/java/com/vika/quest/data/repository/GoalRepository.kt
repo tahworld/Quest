@@ -11,6 +11,7 @@ class GoalRepository(
     fun observeGoals(): Flow<List<GoalEntity>> = goalDao.observeAll()
 
     suspend fun getGoal(id: String): GoalEntity? = goalDao.getById(id)
+    suspend fun getTop(limit: Int): List<GoalEntity> = goalDao.getTop(limit)
 
     suspend fun createGoal(
         name: String,
