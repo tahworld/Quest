@@ -16,6 +16,9 @@ interface QuestDao {
     @Query("SELECT * FROM quests ORDER BY createdAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<QuestEntity>>
 
+    @Query("SELECT * FROM quests ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int): List<QuestEntity>
+
     @Query("SELECT * FROM quests WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): QuestEntity?
 
