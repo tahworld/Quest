@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.vika.quest"
-    compileSdk = 37
+    compileSdk = 36
     buildToolsVersion = "36.1.0"
 
     defaultConfig {
