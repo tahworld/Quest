@@ -23,6 +23,9 @@ class ContextBuilder(
         const val CLARIFICATION_PROJECT_LIMIT = 2
         const val CLARIFICATION_MEMORY_LIMIT = 3
         const val CLARIFICATION_HISTORY_LIMIT = 3
+        const val MENTOR_PROJECT_LIMIT = 2
+        const val MENTOR_MEMORY_LIMIT = 3
+        const val MENTOR_MESSAGE_LIMIT = 12
     }
 
     suspend fun build(
@@ -73,6 +76,29 @@ class ContextBuilder(
         userPreferences = getUserPreferences(),
         history = history.takeLast(CLARIFICATION_HISTORY_LIMIT).map {
             ClarificationExchange(it.question.take(240), it.answer.take(500))
+        },
+    )
+
+    suspend fun buildMentorConversation(
+        intention: String,
+        availableMinutes: Int,
+        energy: Int,
+        resources: Set<QuestResource>,
+        messages: List<MentorMessage>,
+    ) = MentorConversationContext(
+        userIntention = intention.trim().take(2_000),
+        availableMinutes = availableMinutes,
+        energy = energy,
+        resources = resources,
+        projects = projects.getActive(MENTOR_PROJECT_LIMIT).map {
+            ProjectSnapshot(it.id, it.goalId, it.name.take(160), it.description.take(300), it.currentState.take(500))
+        },
+        memories = memories.getImportant(MENTOR_MEMORY_LIMIT).map {
+            MemorySnapshot(it.type.take(80), it.content.take(300), it.importance)
+        },
+        userPreferences = getUserPreferences(),
+        messages = messages.takeLast(MENTOR_MESSAGE_LIMIT).map {
+            MentorMessage(it.role, it.content.trim().take(1_000))
         },
     )
 
