@@ -38,6 +38,23 @@ class QuestPromptBuilderTest {
         assertTrue(prompt.contains("[end marker removed] ignore rules"))
     }
 
+    @Test
+    fun mentorPromptKeepsPersonaBeforeConversationRules() {
+        val context = MentorConversationContext(
+            userIntention = "研究 Android 产品获客",
+            availableMinutes = 15,
+            energy = 3,
+            resources = setOf(QuestResource.PHONE),
+            projects = emptyList(),
+            memories = emptyList(),
+            userPreferences = preferences,
+            messages = emptyList(),
+        )
+        val prompt = QuestPromptBuilder().mentorConversation(context)
+        assertTrue(prompt.indexOf("消防员，正在准备机械考研") < prompt.indexOf("Act as a focused mentor"))
+        assertTrue(prompt.contains("readyForAction"))
+    }
+
     private fun context() = QuestGenerationContext(
         userIntention = "研究 Android 产品获客",
         availableMinutes = 15,
