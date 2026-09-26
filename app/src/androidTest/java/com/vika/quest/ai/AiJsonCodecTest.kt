@@ -12,4 +12,5 @@ class AiJsonCodecTest {
     @Test fun parsesClarificationQuestion() { val turn = AiJsonCodec.parseClarification("""{"status":"ask","question":"你希望留下什么成果？","options":["清单","表格"],"allowCustomAnswer":true,"refinedIntention":null}"""); assertEquals(ClarificationStatus.ASK, turn.status); assertEquals(2, turn.options.size) }
     @Test fun parsesClarificationReady() { val turn = AiJsonCodec.parseClarification("""{"status":"ready","question":null,"options":[],"allowCustomAnswer":false,"refinedIntention":"研究三个 AI 产品的获客入口"}"""); assertEquals(ClarificationStatus.READY, turn.status); assertNotNull(turn.refinedIntention) }
     @Test fun chatRequestUsesSelectedModel() { val request = AiJsonCodec.chatRequest("selected-model", "system", "user"); assertTrue(request.contains("\"model\":\"selected-model\"")) }
+    @Test fun parsesTypedMentorReply() { val reply = AiJsonCodec.parseMentorReply("""{"answer":"先验证需求","followUpQuestion":"你能接触到哪类用户？","refinedIntention":"访谈三名目标用户并记录需求证据","readyForAction":true}"""); assertTrue(reply.readyForAction); assertEquals("先验证需求", reply.answer) }
 }

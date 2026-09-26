@@ -48,4 +48,21 @@ class ClarificationContextBoundsTest {
         assertEquals(ContextBuilder.CLARIFICATION_MEMORY_LIMIT, context.memories.size)
         assertEquals(ContextBuilder.CLARIFICATION_HISTORY_LIMIT, context.history.size)
     }
+
+    @Test
+    fun mentorConversationContextStaysBounded() = runBlocking {
+        val projects = ProjectRepository(db.projectDao())
+        repeat(5) { projects.save(null, "项目$it", "描述$it", "状态$it", now = it.toLong()) }
+        repeat(6) {
+            db.memoryDao().upsert(MemoryEntity(UUID.randomUUID().toString(), null, null, "发现", "导师记忆$it", 5, it.toLong()))
+        }
+        val builder = ContextBuilder(
+            GoalRepository(db.goalDao()), projects, MemoryRepository(db.memoryDao()), QuestRepository(db), UserPreferenceRepository(db.userPreferenceDao()),
+        )
+        val messages = List(20) { MentorMessage(if (it % 2 == 0) MentorMessageRole.USER else MentorMessageRole.MENTOR, "消息$it") }
+        val context = builder.buildMentorConversation("讨论产品方向", 15, 3, setOf(QuestResource.PHONE), messages)
+        assertEquals(2, context.projects.size)
+        assertEquals(3, context.memories.size)
+        assertEquals(12, context.messages.size)
+    }
 }
