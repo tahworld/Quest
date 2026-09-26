@@ -63,7 +63,9 @@ class MentorChatViewModel(
     val uiState: StateFlow<MentorChatUiState> = _uiState.asStateFlow()
 
     init {
-        if (savedState[AWAITING_REPLY] == true || restoredMessages.isEmpty()) requestReply(restoredMessages)
+        if (savedState.get<Boolean>(AWAITING_REPLY) == true || restoredMessages.isEmpty()) {
+            requestReply(restoredMessages)
+        }
     }
 
     fun setInput(value: String) {
