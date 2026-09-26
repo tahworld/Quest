@@ -1,6 +1,30 @@
 package com.vika.quest.ai
 
 class FakeAiProvider : AiProvider {
+    override suspend fun clarifyQuest(context: QuestClarificationContext): AiClarificationTurn = when (context.history.size) {
+        0 -> AiClarificationTurn(
+            status = ClarificationStatus.ASK,
+            question = if (context.userIntention.isBlank()) "你现在更想推进哪一类事情？" else "这次结束时，你最希望留下什么可见成果？",
+            options = if (context.userIntention.isBlank()) listOf("学习或训练", "推进一个项目", "解决眼前问题") else listOf("一份清单或记录", "一个可以使用的成品", "一个经过验证的结论"),
+            allowCustomAnswer = true,
+            refinedIntention = null,
+        )
+        1 -> AiClarificationTurn(
+            status = ClarificationStatus.ASK,
+            question = "当前最需要优先解决的限制是什么？",
+            options = listOf("时间很少", "信息不足", "不知道第一步", "缺少可用工具"),
+            allowCustomAnswer = true,
+            refinedIntention = null,
+        )
+        else -> AiClarificationTurn(
+            status = ClarificationStatus.READY,
+            question = null,
+            options = emptyList(),
+            allowCustomAnswer = false,
+            refinedIntention = refinedIntention(context),
+        )
+    }
+
     override suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft {
         val intention = context.userIntention.trim()
         val project = context.projects.firstOrNull()
@@ -29,4 +53,10 @@ class FakeAiProvider : AiProvider {
     )
 
     override suspend fun testConnection(settings: AiConnectionSettings) = AiConnectionResult(true, "离线测试提供器可用")
+
+    private fun refinedIntention(context: QuestClarificationContext): String {
+        val direction = context.userIntention.ifBlank { "选择一个符合长期方向且现在可以推进的事项" }
+        val answers = context.history.joinToString("；") { it.answer }
+        return "$direction。结合用户补充：$answers。在 ${context.availableMinutes} 分钟内形成明确、可保存的产出。"
+    }
 }

@@ -24,6 +24,37 @@ data class QuestSnapshot(val id: String, val goalId: String?, val projectId: Str
 data class RejectionSnapshot(val questTitle: String, val reason: String, val details: String?)
 data class PreferenceSnapshot(val key: String, val value: String)
 
+data class ClarificationExchange(val question: String, val answer: String)
+
+data class QuestClarificationContext(
+    val userIntention: String,
+    val availableMinutes: Int,
+    val energy: Int,
+    val resources: Set<QuestResource>,
+    val projects: List<ProjectSnapshot>,
+    val memories: List<MemorySnapshot>,
+    val userPreferences: List<PreferenceSnapshot>,
+    val history: List<ClarificationExchange>,
+) {
+    init {
+        require(availableMinutes > 0)
+        require(energy in 1..5)
+        require(projects.size <= 2)
+        require(memories.size <= 3)
+        require(history.size <= 3)
+    }
+}
+
+enum class ClarificationStatus { ASK, READY }
+
+data class AiClarificationTurn(
+    val status: ClarificationStatus,
+    val question: String?,
+    val options: List<String>,
+    val allowCustomAnswer: Boolean,
+    val refinedIntention: String?,
+)
+
 enum class QuestResource { PHONE, COMPUTER, QUIET_THINKING, CAN_MOVE_OR_EXERCISE }
 
 data class AiQuestDraft(
@@ -48,6 +79,7 @@ data class QuestResultAnalysisContext(
     val actualMinutes: Int?,
     val difficultyRating: String?,
     val usefulnessRating: Int?,
+    val userPreferences: List<PreferenceSnapshot> = emptyList(),
 )
 
 data class ProposedMemory(val type: String, val content: String, val importance: Int)
@@ -61,4 +93,4 @@ data class AiQuestResultAnalysis(
 )
 
 data class AiConnectionSettings(val baseUrl: String, val model: String, val apiKey: String)
-data class AiConnectionResult(val success: Boolean, val message: String)
+data class AiConnectionResult(val success: Boolean, val message: String, val availableModels: List<String> = emptyList())

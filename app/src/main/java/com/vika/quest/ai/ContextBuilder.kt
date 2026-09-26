@@ -20,6 +20,9 @@ class ContextBuilder(
         const val QUEST_LIMIT = 8
         const val REJECTION_LIMIT = 5
         const val PREFERENCE_LIMIT = 10
+        const val CLARIFICATION_PROJECT_LIMIT = 2
+        const val CLARIFICATION_MEMORY_LIMIT = 3
+        const val CLARIFICATION_HISTORY_LIMIT = 3
     }
 
     suspend fun build(
@@ -44,9 +47,35 @@ class ContextBuilder(
             memories = memoryEntities.map { MemorySnapshot(it.type.take(80), it.content.take(500), it.importance) },
             recentQuests = questEntities.map { QuestSnapshot(it.id, it.goalId, it.projectId, it.title.take(200), it.status.name, results[it.id]?.resultText?.take(500)) },
             recentRejections = rejections.map { RejectionSnapshot(questById[it.questId]?.title.orEmpty().take(200), it.reason.storageValue, it.details?.take(300)) },
-            userPreferences = preferences.getRecent(PREFERENCE_LIMIT).map { PreferenceSnapshot(it.key.take(100), it.value.take(500)) },
+            userPreferences = getUserPreferences(),
             rejectedQuest = rejectedQuestId?.let { id -> questEntities.firstOrNull { it.id == id } ?: quests.getQuest(id) }?.let { QuestSnapshot(it.id, it.goalId, it.projectId, it.title, it.status.name, results[it.id]?.resultText?.take(500)) },
             rejectionReason = rejectionReason?.take(300),
         )
     }
+
+    suspend fun buildClarification(
+        intention: String,
+        availableMinutes: Int,
+        energy: Int,
+        resources: Set<QuestResource>,
+        history: List<ClarificationExchange>,
+    ) = QuestClarificationContext(
+        userIntention = intention.trim().take(2_000),
+        availableMinutes = availableMinutes,
+        energy = energy,
+        resources = resources,
+        projects = projects.getActive(CLARIFICATION_PROJECT_LIMIT).map {
+            ProjectSnapshot(it.id, it.goalId, it.name.take(160), it.description.take(300), it.currentState.take(500))
+        },
+        memories = memories.getImportant(CLARIFICATION_MEMORY_LIMIT).map {
+            MemorySnapshot(it.type.take(80), it.content.take(300), it.importance)
+        },
+        userPreferences = getUserPreferences(),
+        history = history.takeLast(CLARIFICATION_HISTORY_LIMIT).map {
+            ClarificationExchange(it.question.take(240), it.answer.take(500))
+        },
+    )
+
+    suspend fun getUserPreferences(): List<PreferenceSnapshot> =
+        preferences.getPromptPreferences(PREFERENCE_LIMIT).map { PreferenceSnapshot(it.key.take(100), it.value.take(2_000)) }
 }

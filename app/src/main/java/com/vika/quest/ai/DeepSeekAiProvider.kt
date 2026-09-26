@@ -11,17 +11,33 @@ import org.json.JSONObject
 class DeepSeekAiProvider(
     private val settingsStore: AiSettingsStore,
     private val questValidator: AiQuestDraftValidator,
+    private val clarificationValidator: AiClarificationValidator,
     private val resultValidator: AiQuestResultValidator,
+    private val promptBuilder: QuestPromptBuilder,
 ) : AiProvider {
+    override suspend fun clarifyQuest(context: QuestClarificationContext): AiClarificationTurn {
+        val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
+        var raw = chat(settings, promptBuilder.clarification(context), AiJsonCodec.clarificationContext(context), maxTokens = 700)
+        repeat(2) { attempt ->
+            try {
+                return clarificationValidator.validate(AiJsonCodec.parseClarification(raw), context.userIntention)
+            } catch (error: Exception) {
+                if (attempt == 1) throw IllegalArgumentException("AI 返回的澄清内容无效：${error.message}")
+                raw = chat(settings, promptBuilder.clarification(context), AiJsonCodec.clarificationContext(context) + "\n\n" + QuestPrompts.repair(error.message.orEmpty(), raw), maxTokens = 700)
+            }
+        }
+        error("AI 返回的澄清内容无效")
+    }
+
     override suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft {
         val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
-        var raw = chat(settings, QuestPrompts.generationSystem, AiJsonCodec.generationContext(context))
+        var raw = chat(settings, promptBuilder.generation(context), AiJsonCodec.generationContext(context))
         repeat(2) { attempt ->
             try {
                 return AiJsonCodec.parseQuest(raw).also { questValidator.validate(it, context) }
             } catch (error: Exception) {
                 if (attempt == 1) throw IllegalArgumentException("AI 返回内容无效：${error.message}")
-                raw = chat(settings, QuestPrompts.generationSystem, QuestPrompts.repair(error.message.orEmpty(), raw))
+                raw = chat(settings, promptBuilder.generation(context), AiJsonCodec.generationContext(context) + "\n\n" + QuestPrompts.repair(error.message.orEmpty(), raw))
             }
         }
         error("AI 返回内容无效")
@@ -29,20 +45,20 @@ class DeepSeekAiProvider(
 
     override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext): AiQuestResultAnalysis {
         val settings = settingsStore.readConnectionSettings() ?: return FakeAiProvider().analyzeQuestResult(context)
-        return resultValidator.validate(AiJsonCodec.parseAnalysis(chat(settings, QuestPrompts.analysisSystem, AiJsonCodec.analysisContext(context))))
+        return resultValidator.validate(AiJsonCodec.parseAnalysis(chat(settings, promptBuilder.analysis(context), AiJsonCodec.analysisContext(context))))
     }
 
     override suspend fun testConnection(settings: AiConnectionSettings): AiConnectionResult = try {
         val models = JSONObject(request(settings, "/models", "GET", null)).getJSONArray("data")
         val available = List(models.length()) { models.getJSONObject(it).getString("id") }
-        if (settings.model in available) AiConnectionResult(true, "连接成功，模型 ${settings.model} 可用")
-        else AiConnectionResult(false, "连接成功，但账号当前没有模型 ${settings.model}")
+        if (settings.model in available) AiConnectionResult(true, "连接成功，模型 ${settings.model} 可用", available)
+        else AiConnectionResult(false, "连接成功，但账号当前没有模型 ${settings.model}", available)
     } catch (error: Exception) {
         AiConnectionResult(false, error.message ?: "连接失败")
     }
 
-    private suspend fun chat(settings: AiConnectionSettings, system: String, user: String): String {
-        val body = request(settings, "/chat/completions", "POST", AiJsonCodec.chatRequest(settings.model, system, user))
+    private suspend fun chat(settings: AiConnectionSettings, system: String, user: String, maxTokens: Int = 1600): String {
+        val body = request(settings, "/chat/completions", "POST", AiJsonCodec.chatRequest(settings.model, system, user, maxTokens))
         return runCatching { AiJsonCodec.contentFromChatResponse(body) }.getOrElse { throw IOException("DeepSeek 响应缺少有效内容") }.also { if (it.isBlank()) throw IOException("DeepSeek 返回了空内容") }
     }
 
@@ -69,6 +85,7 @@ class DeepSeekAiProvider(
 
 class ConfiguredAiProvider(private val settings: AiSettingsStore, private val deepSeek: DeepSeekAiProvider, private val fake: FakeAiProvider) : AiProvider {
     private fun active(): AiProvider = if (settings.readPublic().hasApiKey) deepSeek else fake
+    override suspend fun clarifyQuest(context: QuestClarificationContext) = active().clarifyQuest(context)
     override suspend fun generateQuest(context: QuestGenerationContext) = active().generateQuest(context)
     override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = active().analyzeQuestResult(context)
     override suspend fun testConnection(settings: AiConnectionSettings) = deepSeek.testConnection(settings)
