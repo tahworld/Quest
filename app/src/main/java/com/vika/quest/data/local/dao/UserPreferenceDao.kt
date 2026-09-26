@@ -7,6 +7,7 @@ import com.vika.quest.data.local.entity.UserPreferenceEntity
 
 @Dao
 interface UserPreferenceDao {
+    @Query("SELECT * FROM user_preferences WHERE `key` = :key LIMIT 1") suspend fun getByKey(key: String): UserPreferenceEntity?
     @Query("SELECT * FROM user_preferences ORDER BY updatedAt DESC LIMIT :limit") suspend fun getRecent(limit: Int): List<UserPreferenceEntity>
     @Upsert suspend fun upsert(preference: UserPreferenceEntity)
 }
