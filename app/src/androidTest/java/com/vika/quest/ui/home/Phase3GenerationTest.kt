@@ -77,6 +77,7 @@ class Phase3GenerationTest {
             clarificationCalls += 1
             return AiClarificationTurn(ClarificationStatus.ASK, "第 ${context.history.size + 1} 个关键选择是什么？", listOf("保留当前方向", "缩小行动范围"), true, null)
         }
+        override suspend fun continueMentorConversation(context: MentorConversationContext) = fake.continueMentorConversation(context)
         override suspend fun generateQuest(context: QuestGenerationContext) = fake.generateQuest(context)
         override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = fake.analyzeQuestResult(context)
         override suspend fun testConnection(settings: AiConnectionSettings) = AiConnectionResult(true, "测试")
