@@ -45,6 +45,7 @@ fun HomeScreen(
     onProjects: () -> Unit,
     onPersona: () -> Unit,
     onSettings: () -> Unit,
+    onMentor: (String, Int, Int, List<String>) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(state.generatedQuestId) { state.generatedQuestId?.let(onQuestGenerated) }
@@ -149,6 +150,12 @@ fun HomeScreen(
                     if (state.isClarifying) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                     else Text("先帮我理清")
                 }
+                Spacer(Modifier.height(10.dp))
+                TextButton(
+                    onClick = { onMentor(state.intention, state.selectedMinutes, state.energy, state.resources.map { it.name }) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    enabled = !state.isBusy,
+                ) { Text("和导师聊聊") }
             }
             Spacer(Modifier.height(28.dp))
         }
