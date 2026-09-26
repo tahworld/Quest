@@ -14,26 +14,35 @@ import androidx.navigation.navArgument
 import com.vika.quest.di.AppContainer
 import com.vika.quest.ui.home.*
 import com.vika.quest.ui.onboarding.*
+import com.vika.quest.ui.persona.*
 import com.vika.quest.ui.project.*
 import com.vika.quest.ui.quest.*
 import com.vika.quest.ui.result.*
 import com.vika.quest.ui.settings.*
 
 @Composable fun QuestApp(container: AppContainer) {
-    val appVm: AppViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AppViewModel(container.goalRepository) } })
+    val appVm: AppViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AppViewModel(container.goalRepository, container.userPreferenceRepository) } })
     val start by appVm.startRoute.collectAsStateWithLifecycle()
     if (start == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = checkNotNull(start)) {
         composable(Routes.ONBOARDING) {
             val vm: OnboardingViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> OnboardingViewModel(container.goalRepository) } })
-            OnboardingScreen(vm) { nav.navigate(Routes.HOME) { popUpTo(Routes.ONBOARDING) { inclusive = true }; launchSingleTop = true } }
+            OnboardingScreen(vm) { nav.navigate(Routes.PERSONA_SETUP) { popUpTo(Routes.ONBOARDING) { inclusive = true }; launchSingleTop = true } }
+        }
+        composable(Routes.PERSONA_SETUP) {
+            val vm: PersonaViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> PersonaViewModel(container.userPreferenceRepository) } })
+            PersonaScreen(vm, isEditing = false, onComplete = { nav.navigate(Routes.HOME) { popUpTo(Routes.PERSONA_SETUP) { inclusive = true }; launchSingleTop = true } }, onBack = {})
+        }
+        composable(Routes.PERSONA_EDIT) {
+            val vm: PersonaViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> PersonaViewModel(container.userPreferenceRepository) } })
+            PersonaScreen(vm, isEditing = true, onComplete = { nav.popBackStack() }, onBack = { nav.popBackStack() })
         }
         composable(Routes.HOME) { entry ->
-            val vm: HomeViewModel = viewModel(factory = remember(container) { ViewModelFactory { extras -> HomeViewModel(extras.createSavedStateHandle(), container.contextBuilder, container.questRepository, container.aiProvider, container.aiQuestDraftValidator) } })
+            val vm: HomeViewModel = viewModel(factory = remember(container) { ViewModelFactory { extras -> HomeViewModel(extras.createSavedStateHandle(), container.contextBuilder, container.questRepository, container.aiProvider, container.aiQuestDraftValidator, container.aiClarificationValidator) } })
             val transfer by entry.savedStateHandle.getStateFlow("conditions_nonce", 0L).collectAsStateWithLifecycle()
             LaunchedEffect(transfer) { if (transfer > 0) vm.applyConditions(entry.savedStateHandle[HomeViewModel.INTENTION] ?: "", entry.savedStateHandle[HomeViewModel.MINUTES] ?: 15, entry.savedStateHandle[HomeViewModel.ENERGY] ?: 3, entry.savedStateHandle.get<ArrayList<String>>(HomeViewModel.RESOURCES).orEmpty()) }
-            HomeScreen(vm, onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) }, onProjects = { nav.navigate(Routes.PROJECTS) }, onSettings = { nav.navigate(Routes.SETTINGS) })
+            HomeScreen(vm, onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) }, onProjects = { nav.navigate(Routes.PROJECTS) }, onPersona = { nav.navigate(Routes.PERSONA_EDIT) }, onSettings = { nav.navigate(Routes.SETTINGS) })
         }
         composable(Routes.QUEST, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
             val id = checkNotNull(entry.arguments?.getString("questId"))
