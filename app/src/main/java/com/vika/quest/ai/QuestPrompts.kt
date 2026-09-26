@@ -43,6 +43,20 @@ object QuestPrompts {
         {"status":"ready","question":null,"options":[],"allowCustomAnswer":false,"refinedIntention":"specific intention preserving the user's direction"}
     """.trimIndent()
 
+    val mentorConversationRules = """
+        Act as a focused mentor for the user's current intention. Answer the user's concrete question directly before asking anything.
+        You may ask at most one follow-up question, and only when its answer would materially improve the next action.
+        On the first turn, use the profile, intention, conditions, projects and memories to open with one useful observation and one specific question.
+        Keep the user's stated direction. Do not turn the exchange into motivation, therapy, small talk, or an unlimited general chat.
+        Maintain refinedIntention as a compact, specific statement of what the user is trying to achieve in this session.
+        Set readyForAction true when the available information can support one concrete Quest. A follow-up question may still be offered after answering.
+    """.trimIndent()
+
+    val mentorConversationContract = """
+        Return JSON only in this shape:
+        {"answer":"direct useful response","followUpQuestion":"one material question or null","refinedIntention":"specific current direction","readyForAction":true}
+    """.trimIndent()
+
     val analysisRules = """
         Analyze a completed Quest. Do not claim evidence not present in the user's result.
         Propose at most three durable, non-trivial memories; otherwise return an empty array.

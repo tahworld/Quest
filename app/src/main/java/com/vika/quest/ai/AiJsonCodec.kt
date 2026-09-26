@@ -40,6 +40,16 @@ object AiJsonCodec {
         )
     }
 
+    fun parseMentorReply(raw: String): AiMentorReply {
+        val json = JSONObject(extractJson(raw))
+        return AiMentorReply(
+            answer = json.getString("answer"),
+            followUpQuestion = json.nullableString("followUpQuestion"),
+            refinedIntention = json.getString("refinedIntention"),
+            readyForAction = json.getBoolean("readyForAction"),
+        )
+    }
+
     fun generationContext(context: QuestGenerationContext): String = JSONObject().apply {
         put("currentUserIntention", context.userIntention); put("availableMinutes", context.availableMinutes); put("energy", context.energy)
         put("resources", JSONArray(context.resources.map { it.name })); put("goals", JSONArray(context.goals.map { JSONObject().put("id", it.id).put("name", it.name).put("description", it.description).put("priority", it.priority) }))
@@ -68,6 +78,22 @@ object AiJsonCodec {
         }))
         put("clarificationHistory", JSONArray(context.history.map {
             JSONObject().put("question", it.question).put("answer", it.answer)
+        }))
+    }.toString()
+
+    fun mentorConversationContext(context: MentorConversationContext): String = JSONObject().apply {
+        put("currentUserIntention", context.userIntention)
+        put("availableMinutes", context.availableMinutes)
+        put("energy", context.energy)
+        put("resources", JSONArray(context.resources.map { it.name }))
+        put("projects", JSONArray(context.projects.map {
+            JSONObject().put("id", it.id).put("name", it.name).put("description", it.description).put("currentState", it.currentState)
+        }))
+        put("workingMemory", JSONArray(context.memories.map {
+            JSONObject().put("type", it.type).put("content", it.content).put("importance", it.importance)
+        }))
+        put("conversation", JSONArray(context.messages.map {
+            JSONObject().put("role", it.role.name.lowercase()).put("content", it.content)
         }))
     }.toString()
 

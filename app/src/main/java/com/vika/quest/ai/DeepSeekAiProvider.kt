@@ -12,6 +12,7 @@ class DeepSeekAiProvider(
     private val settingsStore: AiSettingsStore,
     private val questValidator: AiQuestDraftValidator,
     private val clarificationValidator: AiClarificationValidator,
+    private val mentorReplyValidator: AiMentorReplyValidator,
     private val resultValidator: AiQuestResultValidator,
     private val promptBuilder: QuestPromptBuilder,
 ) : AiProvider {
@@ -27,6 +28,30 @@ class DeepSeekAiProvider(
             }
         }
         error("AI 返回的澄清内容无效")
+    }
+
+    override suspend fun continueMentorConversation(context: MentorConversationContext): AiMentorReply {
+        val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
+        var raw = chat(
+            settings,
+            promptBuilder.mentorConversation(context),
+            AiJsonCodec.mentorConversationContext(context),
+            maxTokens = 1_000,
+        )
+        repeat(2) { attempt ->
+            try {
+                return mentorReplyValidator.validate(AiJsonCodec.parseMentorReply(raw))
+            } catch (error: Exception) {
+                if (attempt == 1) throw IllegalArgumentException("AI 返回的导师回答无效：${error.message}")
+                raw = chat(
+                    settings,
+                    promptBuilder.mentorConversation(context),
+                    AiJsonCodec.mentorConversationContext(context) + "\n\n" + QuestPrompts.repair(error.message.orEmpty(), raw),
+                    maxTokens = 1_000,
+                )
+            }
+        }
+        error("AI 返回的导师回答无效")
     }
 
     override suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft {
@@ -86,6 +111,7 @@ class DeepSeekAiProvider(
 class ConfiguredAiProvider(private val settings: AiSettingsStore, private val deepSeek: DeepSeekAiProvider, private val fake: FakeAiProvider) : AiProvider {
     private fun active(): AiProvider = if (settings.readPublic().hasApiKey) deepSeek else fake
     override suspend fun clarifyQuest(context: QuestClarificationContext) = active().clarifyQuest(context)
+    override suspend fun continueMentorConversation(context: MentorConversationContext) = active().continueMentorConversation(context)
     override suspend fun generateQuest(context: QuestGenerationContext) = active().generateQuest(context)
     override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = active().analyzeQuestResult(context)
     override suspend fun testConnection(settings: AiConnectionSettings) = deepSeek.testConnection(settings)

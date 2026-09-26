@@ -15,6 +15,12 @@ class QuestPromptBuilder {
         contract = QuestPrompts.clarificationContract,
     )
 
+    fun mentorConversation(context: MentorConversationContext): String = assemble(
+        preferences = context.userPreferences,
+        operationRules = QuestPrompts.mentorConversationRules,
+        contract = QuestPrompts.mentorConversationContract,
+    )
+
     fun analysis(context: QuestResultAnalysisContext): String = assemble(
         preferences = context.userPreferences,
         operationRules = QuestPrompts.analysisRules,

@@ -10,6 +10,7 @@ import com.vika.quest.ai.ConfiguredAiProvider
 import com.vika.quest.ai.ContextBuilder
 import com.vika.quest.ai.DeepSeekAiProvider
 import com.vika.quest.ai.AiClarificationValidator
+import com.vika.quest.ai.AiMentorReplyValidator
 import com.vika.quest.ai.QuestPromptBuilder
 import com.vika.quest.data.local.QuestDatabase
 import com.vika.quest.data.repository.GoalRepository
@@ -28,10 +29,11 @@ class AppContainer(context: Context) {
     val userPreferenceRepository = UserPreferenceRepository(database.userPreferenceDao())
     val aiQuestDraftValidator = AiQuestDraftValidator()
     val aiClarificationValidator = AiClarificationValidator()
+    val aiMentorReplyValidator = AiMentorReplyValidator()
     val aiQuestResultValidator = AiQuestResultValidator()
     val questPromptBuilder = QuestPromptBuilder()
     val aiSettingsStore = AiSettingsStore(context)
-    private val deepSeekProvider = DeepSeekAiProvider(aiSettingsStore, aiQuestDraftValidator, aiClarificationValidator, aiQuestResultValidator, questPromptBuilder)
+    private val deepSeekProvider = DeepSeekAiProvider(aiSettingsStore, aiQuestDraftValidator, aiClarificationValidator, aiMentorReplyValidator, aiQuestResultValidator, questPromptBuilder)
     val aiProvider: AiProvider = ConfiguredAiProvider(aiSettingsStore, deepSeekProvider, FakeAiProvider())
     val contextBuilder = ContextBuilder(goalRepository, projectRepository, memoryRepository, questRepository, userPreferenceRepository)
 }

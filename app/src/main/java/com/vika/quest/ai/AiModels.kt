@@ -55,6 +55,39 @@ data class AiClarificationTurn(
     val refinedIntention: String?,
 )
 
+enum class MentorMessageRole { USER, MENTOR }
+
+data class MentorMessage(
+    val role: MentorMessageRole,
+    val content: String,
+)
+
+data class MentorConversationContext(
+    val userIntention: String,
+    val availableMinutes: Int,
+    val energy: Int,
+    val resources: Set<QuestResource>,
+    val projects: List<ProjectSnapshot>,
+    val memories: List<MemorySnapshot>,
+    val userPreferences: List<PreferenceSnapshot>,
+    val messages: List<MentorMessage>,
+) {
+    init {
+        require(availableMinutes > 0)
+        require(energy in 1..5)
+        require(projects.size <= 2)
+        require(memories.size <= 3)
+        require(messages.size <= 12)
+    }
+}
+
+data class AiMentorReply(
+    val answer: String,
+    val followUpQuestion: String?,
+    val refinedIntention: String,
+    val readyForAction: Boolean,
+)
+
 enum class QuestResource { PHONE, COMPUTER, QUIET_THINKING, CAN_MOVE_OR_EXERCISE }
 
 data class AiQuestDraft(

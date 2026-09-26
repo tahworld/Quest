@@ -18,7 +18,23 @@ class FakeAiProviderTest {
         assertTrue(checkNotNull(ready.refinedIntention).contains("梳理产品方向"))
     }
 
+    @Test fun mentorConversationAnswersThenBecomesReady() = runBlocking {
+        val provider = FakeAiProvider()
+        val first = provider.continueMentorConversation(mentorContext(emptyList()))
+        assertFalse(first.readyForAction)
+        assertNotNull(first.followUpQuestion)
+        val second = provider.continueMentorConversation(
+            mentorContext(listOf(MentorMessage(MentorMessageRole.USER, "我卡在不知道先验证需求还是先写代码"))),
+        )
+        assertTrue(second.readyForAction)
+        assertTrue(second.refinedIntention.contains("梳理产品方向"))
+    }
+
     private fun clarificationContext(history: List<ClarificationExchange>) = QuestClarificationContext(
         "梳理产品方向", 15, 3, setOf(QuestResource.PHONE), emptyList(), emptyList(), emptyList(), history,
+    )
+
+    private fun mentorContext(messages: List<MentorMessage>) = MentorConversationContext(
+        "梳理产品方向", 15, 3, setOf(QuestResource.PHONE), emptyList(), emptyList(), emptyList(), messages,
     )
 }

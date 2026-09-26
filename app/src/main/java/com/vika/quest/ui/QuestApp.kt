@@ -13,6 +13,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vika.quest.di.AppContainer
 import com.vika.quest.ui.home.*
+import com.vika.quest.ui.mentor.*
 import com.vika.quest.ui.onboarding.*
 import com.vika.quest.ui.persona.*
 import com.vika.quest.ui.project.*
@@ -42,7 +43,44 @@ import com.vika.quest.ui.settings.*
             val vm: HomeViewModel = viewModel(factory = remember(container) { ViewModelFactory { extras -> HomeViewModel(extras.createSavedStateHandle(), container.contextBuilder, container.questRepository, container.aiProvider, container.aiQuestDraftValidator, container.aiClarificationValidator) } })
             val transfer by entry.savedStateHandle.getStateFlow("conditions_nonce", 0L).collectAsStateWithLifecycle()
             LaunchedEffect(transfer) { if (transfer > 0) vm.applyConditions(entry.savedStateHandle[HomeViewModel.INTENTION] ?: "", entry.savedStateHandle[HomeViewModel.MINUTES] ?: 15, entry.savedStateHandle[HomeViewModel.ENERGY] ?: 3, entry.savedStateHandle.get<ArrayList<String>>(HomeViewModel.RESOURCES).orEmpty()) }
-            HomeScreen(vm, onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) }, onProjects = { nav.navigate(Routes.PROJECTS) }, onPersona = { nav.navigate(Routes.PERSONA_EDIT) }, onSettings = { nav.navigate(Routes.SETTINGS) })
+            HomeScreen(
+                vm,
+                onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) },
+                onProjects = { nav.navigate(Routes.PROJECTS) },
+                onPersona = { nav.navigate(Routes.PERSONA_EDIT) },
+                onSettings = { nav.navigate(Routes.SETTINGS) },
+                onMentor = { intention, minutes, energy, resources ->
+                    entry.savedStateHandle[MentorChatViewModel.INTENTION] = intention
+                    entry.savedStateHandle[MentorChatViewModel.MINUTES] = minutes
+                    entry.savedStateHandle[MentorChatViewModel.ENERGY] = energy
+                    entry.savedStateHandle[MentorChatViewModel.RESOURCES] = ArrayList(resources)
+                    nav.navigate(Routes.MENTOR)
+                },
+            )
+        }
+        composable(Routes.MENTOR) {
+            val source = nav.previousBackStackEntry?.savedStateHandle
+            val vm: MentorChatViewModel = viewModel(factory = remember(container) {
+                ViewModelFactory { extras ->
+                    MentorChatViewModel(
+                        extras.createSavedStateHandle(),
+                        container.contextBuilder,
+                        container.questRepository,
+                        container.aiProvider,
+                        container.aiMentorReplyValidator,
+                        container.aiQuestDraftValidator,
+                        source?.get(MentorChatViewModel.INTENTION) ?: "",
+                        source?.get(MentorChatViewModel.MINUTES) ?: 15,
+                        source?.get(MentorChatViewModel.ENERGY) ?: 3,
+                        source?.get<ArrayList<String>>(MentorChatViewModel.RESOURCES).orEmpty(),
+                    )
+                }
+            })
+            MentorChatScreen(
+                vm,
+                onBack = { nav.popBackStack() },
+                onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) },
+            )
         }
         composable(Routes.QUEST, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
             val id = checkNotNull(entry.arguments?.getString("questId"))

@@ -25,6 +25,32 @@ class FakeAiProvider : AiProvider {
         )
     }
 
+    override suspend fun continueMentorConversation(context: MentorConversationContext): AiMentorReply {
+        val userTurns = context.messages.count { it.role == MentorMessageRole.USER }
+        val latest = context.messages.lastOrNull { it.role == MentorMessageRole.USER }?.content.orEmpty()
+        val direction = context.userIntention.ifBlank { latest }.ifBlank { "找出现在最值得推进的一件事" }
+        return when (userTurns) {
+            0 -> AiMentorReply(
+                answer = "我会先围绕“${direction.take(36)}”判断当前最值得解决的部分，再把讨论收束成一次可执行行动。",
+                followUpQuestion = "这件事当前最卡住你的具体问题是什么？",
+                refinedIntention = "$direction，并找出当前最关键的阻碍。",
+                readyForAction = false,
+            )
+            1 -> AiMentorReply(
+                answer = "你提到的“${latest.take(48)}”已经把问题范围缩小了。下一步需要确定本轮讨论要留下什么结果。",
+                followUpQuestion = "聊完以后，你希望得到判断、方案，还是一份可以直接执行的清单？",
+                refinedIntention = "$direction。重点处理：${latest.take(300)}。",
+                readyForAction = true,
+            )
+            else -> AiMentorReply(
+                answer = "现有信息已经足够形成行动。先保留你的方向，再把最近的回答作为执行约束。",
+                followUpQuestion = null,
+                refinedIntention = "$direction。结合补充信息：${latest.take(300)}，形成一个可立即执行并留下成果的行动。",
+                readyForAction = true,
+            )
+        }
+    }
+
     override suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft {
         val intention = context.userIntention.trim()
         val project = context.projects.firstOrNull()
