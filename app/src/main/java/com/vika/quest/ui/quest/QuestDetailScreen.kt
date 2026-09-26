@@ -12,6 +12,7 @@ import com.vika.quest.model.DifficultyRating
 import com.vika.quest.model.QuestStatus
 import com.vika.quest.model.RejectionReason
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdjusted: (String, Int, Int, List<String>) -> Unit, onReplaced: (String) -> Unit, onResult: (String) -> Unit, onAbandoned: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -19,8 +20,7 @@ fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdj
     LaunchedEffect(state.newQuestId) { state.newQuestId?.let(onReplaced) }
     LaunchedEffect(state.resultReady) { if (state.resultReady) onResult(checkNotNull(state.quest).id) }
     LaunchedEffect(state.abandoned) { if (state.abandoned) onAbandoned() }
-    Scaffold { padding -> Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp)) {
-        TextButton(onClick = onBack) { Text("返回") }
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing, topBar = { TopAppBar(title = { Text("行动") }, navigationIcon = { TextButton(onClick = onBack) { Text("返回") } }) }) { padding -> Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp)) {
         if (state.isLoading) { CircularProgressIndicator(); return@Column }
         val quest = state.quest ?: run { Text(state.errorMessage ?: "未找到行动", color = MaterialTheme.colorScheme.error); return@Column }
         if (state.goalName.isNotBlank()) Text(state.goalName, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)

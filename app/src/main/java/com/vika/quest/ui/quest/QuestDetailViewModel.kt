@@ -83,6 +83,7 @@ class QuestDetailViewModel(
                         quest = QuestSnapshot(quest.id, quest.goalId, quest.projectId, quest.title, QuestStatus.COMPLETED.name, result.resultText.take(500)),
                         steps = quest.steps.ifEmpty { listOf(quest.instruction) }, completionCriteria = quest.completionCriteria,
                         resultText = result.resultText, actualMinutes = result.actualMinutes, difficultyRating = result.difficultyRating?.name, usefulnessRating = result.usefulnessRating,
+                        userPreferences = contextBuilder.getUserPreferences(),
                     )
                     val analysis = resultValidator.validate(ai.analyzeQuestResult(context))
                     val memoryEntities = analysis.memoriesToSave.map { MemoryEntity(UUID.randomUUID().toString(), quest.goalId, quest.projectId, it.type.trim(), it.content.trim(), it.importance, System.currentTimeMillis()) }
