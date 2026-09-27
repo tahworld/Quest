@@ -551,7 +551,7 @@ index 18af892..bfd93b4 100644
 +    fun expedition(goalId: String): String = "expedition/$goalId"
  }
 diff --git a/app/src/main/java/com/vika/quest/ui/QuestApp.kt b/app/src/main/java/com/vika/quest/ui/QuestApp.kt
-index f696760..49d7b01 100644
+index f696760..68edeb7 100644
 --- a/app/src/main/java/com/vika/quest/ui/QuestApp.kt
 +++ b/app/src/main/java/com/vika/quest/ui/QuestApp.kt
 @@ -19,6 +19,7 @@ import com.vika.quest.ui.project.*
@@ -585,8 +585,9 @@ index f696760..49d7b01 100644
              QuestDetailScreen(vm, onBack = { nav.popBackStack() }, onAdjusted = { intention, minutes, energy, resources -> transferToHome(nav, intention, minutes, energy, resources) }, onReplaced = { newId -> nav.popBackStack(); nav.navigate(Routes.quest(newId)) }, onResult = { nav.navigate(Routes.result(it)) }, onAbandoned = { nav.popBackStack() })
          }
          composable(Routes.RESULT, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
-             val id = checkNotNull(entry.arguments?.getString("questId")); val vm: ResultViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> ResultViewModel(id, container.questRepository) } })
+-            val id = checkNotNull(entry.arguments?.getString("questId")); val vm: ResultViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> ResultViewModel(id, container.questRepository) } })
 -            ResultScreen(vm, onDone = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true } }, onContinue = { next -> transferToHome(nav, next, 15, 3, listOf("PHONE")) })
++            val id = checkNotNull(entry.arguments?.getString("questId")); val vm: ResultViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> ResultViewModel(id, container.questRepository, container.expeditionRepository) } })
 +            ResultScreen(vm, onDone = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true } }, onContinue = { next -> transferToHome(nav, next, 15, 3, listOf("PHONE")) }, onExpedition = { goalId -> nav.navigate(Routes.expedition(goalId)) })
 +        }
 +        composable(Routes.EXPEDITION, arguments = listOf(navArgument("goalId") { type = NavType.StringType })) { entry ->
@@ -598,28 +599,23 @@ index f696760..49d7b01 100644
          composable(Routes.SETTINGS) { val vm: AiSettingsViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AiSettingsViewModel(container.aiSettingsStore, container.aiProvider) } }); AiSettingsScreen(vm) { nav.popBackStack() } }
 diff --git a/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionScreen.kt b/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionScreen.kt
 new file mode 100644
-index 0000000..2259109
+index 0000000..25ecdc9
 --- /dev/null
 +++ b/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionScreen.kt
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,82 @@
 +package com.vika.quest.ui.expedition
 +
 +import android.content.Intent
 +import android.net.Uri
-+import androidx.compose.foundation.Canvas
 +import androidx.compose.foundation.layout.*
 +import androidx.compose.foundation.rememberScrollState
 +import androidx.compose.foundation.verticalScroll
 +import androidx.compose.material3.*
 +import androidx.compose.runtime.*
 +import androidx.compose.ui.Modifier
-+import androidx.compose.ui.geometry.Offset
-+import androidx.compose.ui.graphics.Path
-+import androidx.compose.ui.graphics.PathEffect
 +import androidx.compose.ui.platform.LocalContext
 +import androidx.compose.ui.unit.dp
 +import androidx.lifecycle.compose.collectAsStateWithLifecycle
-+import com.vika.quest.data.local.entity.ExpeditionEntity
 +import com.vika.quest.data.repository.ArtifactStorage
 +import com.vika.quest.model.CampBuilding
 +import com.vika.quest.model.ExpeditionRules
@@ -637,23 +633,27 @@ index 0000000..2259109
 +        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp)) {
 +            if (state.loading) { CircularProgressIndicator(); return@Column }
 +            val progress = state.expedition ?: return@Column
-+            Text(state.goalName, style = MaterialTheme.typography.headlineSmall)
++            Text("第 ${ExpeditionRules.chapter(progress.completedActions)} 章", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++            Spacer(Modifier.height(6.dp))
++            Text(state.goalName, style = MaterialTheme.typography.headlineMedium)
 +            Spacer(Modifier.height(8.dp))
-+            Text("第 ${ExpeditionRules.chapter(progress.completedActions)} 章 · 累计走出 ${progress.completedActions} 步", color = MaterialTheme.colorScheme.onSurfaceVariant)
-+            Spacer(Modifier.height(16.dp))
-+            ExpeditionMap(progress.completedActions)
++            Text("走过 ${progress.completedActions} 步 · 下一格等你开启", color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Spacer(Modifier.height(18.dp))
++            TrailArtwork(progress.completedActions)
++            Spacer(Modifier.height(30.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                Text("我的营地", style = MaterialTheme.typography.titleLarge)
++                Text("物资 ${progress.supplies}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
++            }
 +            Spacer(Modifier.height(12.dp))
-+            Text("下一格由下一次真实行动开启。离开一段时间后，已经走过的路仍在这里。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-+            Spacer(Modifier.height(28.dp))
-+            Text("我的营地", style = MaterialTheme.typography.titleLarge)
-+            Text("物资 ${progress.supplies} · 完成一个行动获得 1 份", color = MaterialTheme.colorScheme.onSurfaceVariant)
-+            Spacer(Modifier.height(12.dp))
-+            CampScene(progress)
++            CampArtwork(progress)
++            Text("每完成一个行动，获得 1 份物资。", style = MaterialTheme.typography.bodySmall,
++                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
 +            CampBuilding.entries.forEach { building ->
 +                val level = ExpeditionRules.level(progress, building)
 +                val price = ExpeditionRules.cost(level + 1)
-+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-+                    Column { Text(building.label, style = MaterialTheme.typography.titleMedium); Text("$level / ${ExpeditionRules.MAX_BUILDING_LEVEL} 级", style = MaterialTheme.typography.bodySmall) }
++                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
++                    Column { Text(building.label, style = MaterialTheme.typography.titleMedium); Text("$level / ${ExpeditionRules.MAX_BUILDING_LEVEL} 级", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 +                    OutlinedButton(onClick = { vm.build(building) }, enabled = !state.building && level < ExpeditionRules.MAX_BUILDING_LEVEL && progress.supplies >= price) {
 +                        Text(if (level == ExpeditionRules.MAX_BUILDING_LEVEL) "已建成" else "建设 · $price 物资")
 +                    }
@@ -679,64 +679,9 @@ index 0000000..2259109
 +                    }) { Text(if (artifact.kind == "FILE") "打开保存的文件" else "打开成果链接") }
 +                }
 +            }
++            if (state.artifacts.isNotEmpty()) Spacer(Modifier.height(8.dp))
 +            openError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 +            Spacer(Modifier.height(24.dp))
-+        }
-+    }
-+}
-+
-+@Composable
-+private fun ExpeditionMap(completedActions: Int) {
-+    val revealed = ExpeditionRules.exploredInChapter(completedActions)
-+    val active = MaterialTheme.colorScheme.primary
-+    val unexplored = MaterialTheme.colorScheme.outlineVariant
-+    val highlight = MaterialTheme.colorScheme.tertiary
-+    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.large) {
-+        Canvas(Modifier.fillMaxWidth().height(220.dp).padding(18.dp)) {
-+            val nodes = (0..9).map { index ->
-+                val column = if (index < 5) index else 9 - index
-+                Offset(size.width * (0.08f + column * 0.21f), size.height * if (index < 5) 0.28f else 0.72f)
-+            }
-+            nodes.zipWithNext().forEachIndexed { index, (from, to) ->
-+                drawLine(if (index < revealed) active else unexplored, from, to, strokeWidth = 6.dp.toPx(), pathEffect = if (index < revealed) null else PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
-+            }
-+            nodes.forEachIndexed { index, point ->
-+                drawCircle(if (index < revealed) active else unexplored, radius = 12.dp.toPx(), center = point)
-+                if (index == revealed) drawCircle(highlight, radius = 7.dp.toPx(), center = point)
-+            }
-+        }
-+    }
-+}
-+
-+@Composable
-+private fun CampScene(progress: ExpeditionEntity) {
-+    val line = MaterialTheme.colorScheme.primary
-+    val ground = MaterialTheme.colorScheme.secondary
-+    val glow = MaterialTheme.colorScheme.tertiary
-+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
-+        Canvas(Modifier.fillMaxWidth().height(140.dp).padding(18.dp)) {
-+            val y = size.height * 0.77f
-+            drawLine(ground, Offset(0f, y), Offset(size.width, y), strokeWidth = 4.dp.toPx())
-+            if (progress.campfireLevel > 0) {
-+                val x = size.width * 0.2f
-+                drawCircle(glow.copy(alpha = .23f), radius = (19 + progress.campfireLevel * 5).dp.toPx(), center = Offset(x, y - 17.dp.toPx()))
-+                drawCircle(glow, radius = (8 + progress.campfireLevel * 2).dp.toPx(), center = Offset(x, y - 12.dp.toPx()))
-+            }
-+            if (progress.shelterLevel > 0) {
-+                val x = size.width * 0.53f
-+                val top = y - (33 + progress.shelterLevel * 7).dp.toPx()
-+                drawRect(line.copy(alpha = .45f), Offset(x - 28.dp.toPx(), top + 18.dp.toPx()), androidx.compose.ui.geometry.Size(56.dp.toPx(), y - top - 18.dp.toPx()))
-+                val roof = Path().apply { moveTo(x - 35.dp.toPx(), top + 20.dp.toPx()); lineTo(x, top); lineTo(x + 35.dp.toPx(), top + 20.dp.toPx()); close() }
-+                drawPath(roof, line)
-+            }
-+            if (progress.lookoutLevel > 0) {
-+                val x = size.width * 0.83f
-+                val top = y - (39 + progress.lookoutLevel * 10).dp.toPx()
-+                drawLine(line, Offset(x - 12.dp.toPx(), y), Offset(x - 12.dp.toPx(), top), 4.dp.toPx())
-+                drawLine(line, Offset(x + 12.dp.toPx(), y), Offset(x + 12.dp.toPx(), top), 4.dp.toPx())
-+                drawLine(line, Offset(x - 22.dp.toPx(), top), Offset(x + 22.dp.toPx(), top), 5.dp.toPx())
-+                drawCircle(glow, 5.dp.toPx(), Offset(x, top - 9.dp.toPx()))
-+            }
 +        }
 +    }
 +}
@@ -802,19 +747,158 @@ index 0000000..3e481ec
 +        }
 +    }
 +}
+diff --git a/app/src/main/java/com/vika/quest/ui/expedition/TrailArtwork.kt b/app/src/main/java/com/vika/quest/ui/expedition/TrailArtwork.kt
+new file mode 100644
+index 0000000..6d18488
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/ui/expedition/TrailArtwork.kt
+@@ -0,0 +1,125 @@
++package com.vika.quest.ui.expedition
++
++import androidx.compose.foundation.Canvas
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Surface
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.geometry.Offset
++import androidx.compose.ui.geometry.Size
++import androidx.compose.ui.graphics.Path
++import androidx.compose.ui.graphics.PathEffect
++import androidx.compose.ui.graphics.StrokeCap
++import androidx.compose.ui.graphics.drawscope.Stroke
++import androidx.compose.ui.unit.dp
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import com.vika.quest.model.ExpeditionRules
++
++/** A small map of the current chapter. Every filled stop represents a saved action. */
++@Composable
++fun TrailArtwork(completedActions: Int, modifier: Modifier = Modifier, height: Int = 206) {
++    val sky = MaterialTheme.colorScheme.secondaryContainer
++    val near = MaterialTheme.colorScheme.primaryContainer
++    val far = MaterialTheme.colorScheme.primary.copy(alpha = .15f)
++    val route = MaterialTheme.colorScheme.primary
++    val waiting = MaterialTheme.colorScheme.outlineVariant
++    val sun = MaterialTheme.colorScheme.tertiary
++    val revealed = ExpeditionRules.exploredInChapter(completedActions)
++    Surface(modifier, shape = RoundedCornerShape(30.dp), color = sky) {
++        Canvas(Modifier.fillMaxWidth().height(height.dp).padding(14.dp)) {
++            val w = size.width
++            val h = size.height
++            drawCircle(sun.copy(alpha = .7f), w * .085f, Offset(w * .82f, h * .20f))
++            val distant = Path().apply {
++                moveTo(0f, h * .58f)
++                quadraticBezierTo(w * .22f, h * .25f, w * .49f, h * .56f)
++                quadraticBezierTo(w * .75f, h * .23f, w, h * .50f)
++                lineTo(w, h); lineTo(0f, h); close()
++            }
++            drawPath(distant, far)
++            val foreground = Path().apply {
++                moveTo(0f, h * .83f)
++                quadraticBezierTo(w * .20f, h * .67f, w * .43f, h * .79f)
++                quadraticBezierTo(w * .75f, h * .98f, w, h * .70f)
++                lineTo(w, h); lineTo(0f, h); close()
++            }
++            drawPath(foreground, near)
++            val stops = (0 until ExpeditionRules.NODES_PER_CHAPTER).map { index ->
++                val x = w * (.09f + (index % 5) * .205f)
++                val y = if (index < 5) h * (.43f + (index % 2) * .11f) else h * (.74f - (index % 2) * .10f)
++                Offset(if (index < 5) x else w - x, y)
++            }
++            stops.zipWithNext().forEachIndexed { index, (from, to) ->
++                drawLine(if (index < revealed) route else waiting, from, to, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round,
++                    pathEffect = if (index < revealed) null else PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 7.dp.toPx())))
++            }
++            stops.forEachIndexed { index, stop ->
++                drawCircle(sky, 11.dp.toPx(), stop)
++                drawCircle(if (index < revealed) route else waiting, 7.dp.toPx(), stop)
++                if (index == revealed) {
++                    drawCircle(sun, 11.dp.toPx(), stop, style = Stroke(3.dp.toPx()))
++                    drawCircle(sun, 4.dp.toPx(), stop)
++                }
++            }
++        }
++    }
++}
++
++/** Camp upgrades have three visible states and are drawn locally, without an image download. */
++@Composable
++fun CampArtwork(progress: ExpeditionEntity, modifier: Modifier = Modifier) {
++    val sky = MaterialTheme.colorScheme.primaryContainer
++    val ground = MaterialTheme.colorScheme.primary.copy(alpha = .2f)
++    val wood = MaterialTheme.colorScheme.primary
++    val flame = MaterialTheme.colorScheme.tertiary
++    val detail = MaterialTheme.colorScheme.onPrimaryContainer
++    Surface(modifier, shape = RoundedCornerShape(30.dp), color = sky) {
++        Canvas(Modifier.fillMaxWidth().height(178.dp).padding(14.dp)) {
++            val w = size.width
++            val h = size.height
++            val base = h * .80f
++            drawRoundRect(ground, Offset(0f, base), Size(w, h - base), cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()))
++            // Three quiet silhouettes make the empty camp feel like a place to return to.
++            val fireX = w * .18f
++            drawLine(wood, Offset(fireX - 15.dp.toPx(), base), Offset(fireX + 13.dp.toPx(), base - 5.dp.toPx()), 4.dp.toPx(), cap = StrokeCap.Round)
++            drawLine(wood, Offset(fireX + 15.dp.toPx(), base), Offset(fireX - 13.dp.toPx(), base - 5.dp.toPx()), 4.dp.toPx(), cap = StrokeCap.Round)
++            if (progress.campfireLevel > 0) {
++                drawCircle(flame.copy(alpha = .17f), (23 + progress.campfireLevel * 6).dp.toPx(), Offset(fireX, base - 21.dp.toPx()))
++                val fire = Path().apply {
++                    moveTo(fireX, base - (29 + progress.campfireLevel * 6).dp.toPx())
++                    quadraticBezierTo(fireX + 17.dp.toPx(), base - 9.dp.toPx(), fireX, base - 7.dp.toPx())
++                    quadraticBezierTo(fireX - 16.dp.toPx(), base - 15.dp.toPx(), fireX, base - (29 + progress.campfireLevel * 6).dp.toPx())
++                }
++                drawPath(fire, flame)
++            }
++            val cabinX = w * .53f
++            val top = base - (48 + progress.shelterLevel * 8).dp.toPx()
++            val cabinColor = if (progress.shelterLevel > 0) wood else wood.copy(alpha = .28f)
++            drawRoundRect(cabinColor, Offset(cabinX - 31.dp.toPx(), top + 20.dp.toPx()), Size(62.dp.toPx(), base - top - 20.dp.toPx()),
++                cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()))
++            val roof = Path().apply {
++                moveTo(cabinX - 39.dp.toPx(), top + 22.dp.toPx())
++                lineTo(cabinX, top)
++                lineTo(cabinX + 39.dp.toPx(), top + 22.dp.toPx())
++                close()
++            }
++            drawPath(roof, cabinColor)
++            if (progress.shelterLevel > 0) {
++                drawRoundRect(sky, Offset(cabinX - 7.dp.toPx(), base - 23.dp.toPx()), Size(14.dp.toPx(), 23.dp.toPx()),
++                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()))
++                if (progress.shelterLevel > 1) drawCircle(flame, 4.dp.toPx(), Offset(cabinX + 19.dp.toPx(), top + 34.dp.toPx()))
++            }
++            val towerX = w * .84f
++            val towerTop = base - (53 + progress.lookoutLevel * 12).dp.toPx()
++            val towerColor = if (progress.lookoutLevel > 0) detail else detail.copy(alpha = .23f)
++            drawLine(towerColor, Offset(towerX - 12.dp.toPx(), base), Offset(towerX - 9.dp.toPx(), towerTop), 4.dp.toPx())
++            drawLine(towerColor, Offset(towerX + 12.dp.toPx(), base), Offset(towerX + 9.dp.toPx(), towerTop), 4.dp.toPx())
++            drawLine(towerColor, Offset(towerX - 20.dp.toPx(), towerTop), Offset(towerX + 20.dp.toPx(), towerTop), 5.dp.toPx(), cap = StrokeCap.Round)
++            if (progress.lookoutLevel > 0) drawCircle(flame, 5.dp.toPx(), Offset(towerX, towerTop - 10.dp.toPx()))
++        }
++    }
++}
 diff --git a/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt b/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
-index 65e8e6a..237c992 100644
+index 65e8e6a..f6aa66f 100644
 --- a/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
 +++ b/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
-@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
+@@ -5,11 +5,15 @@ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.dp
  import androidx.lifecycle.compose.collectAsStateWithLifecycle
  import com.vika.quest.ai.QuestResource
  import com.vika.quest.model.DirectionChoice
 +import com.vika.quest.model.ExpeditionRules
++import com.vika.quest.ui.expedition.TrailArtwork
  import kotlin.math.roundToInt
  
  @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@@ -20,6 +21,7 @@ fun HomeScreen(
+@@ -20,59 +24,83 @@ fun HomeScreen(
      onProjects: () -> Unit,
      onPersona: () -> Unit,
      onSettings: () -> Unit,
@@ -822,28 +906,127 @@ index 65e8e6a..237c992 100644
  ) {
      val state by viewModel.uiState.collectAsStateWithLifecycle()
      var directionDialog by remember { mutableStateOf(false) }
-@@ -52,6 +54,21 @@ fun HomeScreen(
-             TextButton(onClick = { directionDialog = true }, enabled = !state.isBusy && !state.isSavingDirection) {
-                 Text(if (direction == null) "选择方向" else "更换方向")
+     var showConditions by remember { mutableStateOf(false) }
++    var showMenu by remember { mutableStateOf(false) }
+     LaunchedEffect(state.generatedQuestId) { state.generatedQuestId?.let(onQuestGenerated) }
+ 
+     Scaffold(
+         contentWindowInsets = WindowInsets.safeDrawing,
+         topBar = {
+-            TopAppBar(title = { Text("Quest") }, actions = {
+-                TextButton(onClick = onProjects) { Text("项目") }
+-                TextButton(onClick = onPersona) { Text("偏好") }
+-                TextButton(onClick = onSettings) { Text("AI") }
+-            })
++            TopAppBar(
++                title = { Text("Quest", style = MaterialTheme.typography.headlineSmall) },
++                actions = {
++                    TextButton(onClick = { showMenu = true }) { Text("更多") }
++                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
++                        DropdownMenuItem(text = { Text("项目") }, onClick = { showMenu = false; onProjects() })
++                        DropdownMenuItem(text = { Text("引导偏好") }, onClick = { showMenu = false; onPersona() })
++                        DropdownMenuItem(text = { Text("AI 设置") }, onClick = { showMenu = false; onSettings() })
++                    }
++                },
++            )
+         },
+     ) { padding ->
+         Column(
+             Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState())
+                 .padding(horizontal = 24.dp, vertical = 20.dp),
+         ) {
+-            Text("我在推进什么？", style = MaterialTheme.typography.headlineMedium)
+-            Spacer(Modifier.height(12.dp))
++            Text("今日旅程", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++            Spacer(Modifier.height(6.dp))
++            Text("走一小步，也算出发。", style = MaterialTheme.typography.headlineMedium)
++            Spacer(Modifier.height(20.dp))
+             val direction = state.goals.firstOrNull { it.id == state.currentGoalId }
+             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxWidth()) {
+-                Row(Modifier.padding(18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+-                    Text("●", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
+-                    Text(direction?.name ?: "先选一个方向", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
++                Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text("当前方向", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
++                        Spacer(Modifier.height(4.dp))
++                        Text(direction?.name ?: "先选一个方向", maxLines = 2, overflow = TextOverflow.Ellipsis,
++                            style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
++                    }
++                    TextButton(onClick = { directionDialog = true }, enabled = !state.isBusy && !state.isSavingDirection) {
++                        Text(if (direction == null) "选择" else "更换")
++                    }
+                 }
              }
+-            TextButton(onClick = { directionDialog = true }, enabled = !state.isBusy && !state.isSavingDirection) {
+-                Text(if (direction == null) "选择方向" else "更换方向")
+-            }
+-            state.recentProgress?.let {
+-                Spacer(Modifier.height(8.dp))
+-                Text("上次留下：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
 +            state.currentGoalId?.let { goalId ->
 +                val completed = state.expedition?.completedActions ?: 0
 +                val supplies = state.expedition?.supplies ?: 0
-+                Spacer(Modifier.height(8.dp))
-+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-+                    Column(Modifier.padding(18.dp)) {
-+                        Text("第 ${ExpeditionRules.chapter(completed)} 章 · 已探索 $completed 步", style = MaterialTheme.typography.titleMedium)
-+                        Spacer(Modifier.height(10.dp))
-+                        LinearProgressIndicator(progress = { ExpeditionRules.exploredInChapter(completed) / 10f }, modifier = Modifier.fillMaxWidth())
-+                        Spacer(Modifier.height(8.dp))
-+                        Text("营地物资 $supplies · 每完成一步，路线就向前一格", style = MaterialTheme.typography.bodySmall)
-+                        TextButton(onClick = { onExpedition(goalId) }) { Text("看看我的旅程与成果") }
-+                    }
++                Spacer(Modifier.height(12.dp))
++                TrailArtwork(completed, modifier = Modifier.fillMaxWidth(), height = 148)
++                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
++                    Text("第 ${ExpeditionRules.chapter(completed)} 章 · $completed 步 · 物资 $supplies",
++                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
++                    TextButton(onClick = { onExpedition(goalId) }) { Text("我的旅程 ›") }
 +                }
+             }
+-            Spacer(Modifier.height(28.dp))
+-            Text("今天最容易开始的下一步是什么？", style = MaterialTheme.typography.headlineSmall)
+-            Spacer(Modifier.height(16.dp))
++            Spacer(Modifier.height(20.dp))
++            Text("今天想推进哪一点？", style = MaterialTheme.typography.titleLarge)
++            Spacer(Modifier.height(10.dp))
+             OutlinedTextField(
+                 value = state.intention,
+                 onValueChange = viewModel::setIntention,
+                 modifier = Modifier.fillMaxWidth(),
+                 minLines = 2,
+                 maxLines = 5,
+-                label = { Text("此刻的想法（可留空）") },
+-                placeholder = { Text("比如：继续昨天的阅读，或解决项目里最卡的一点") },
++                label = { Text("此刻的想法 · 可留空") },
++                placeholder = { Text("想不到也没关系，Quest 会接着上次走。") },
+                 enabled = !state.isBusy,
++                shape = MaterialTheme.shapes.medium,
+             )
+-            Text("留空时，Quest 会承接当前方向和上次的进展。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-            Spacer(Modifier.height(20.dp))
+-            Text("${state.selectedMinutes} 分钟 · 精力 ${state.energy}/5 · ${state.resources.joinToString("、") { it.label() }.ifBlank { "未选择设备" }}", style = MaterialTheme.typography.bodyMedium)
+-            TextButton(onClick = { showConditions = !showConditions }) { Text(if (showConditions) "收起条件" else "调整时间与条件") }
++            Spacer(Modifier.height(16.dp))
++            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
++                Text("${state.selectedMinutes} 分钟  ·  精力 ${state.energy}/5  ·  ${state.resources.joinToString("、") { it.label() }.ifBlank { "无设备" }}",
++                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2)
++                TextButton(onClick = { showConditions = !showConditions }) { Text(if (showConditions) "收起" else "调整") }
 +            }
-             state.recentProgress?.let {
-                 Spacer(Modifier.height(8.dp))
-                 Text("上次留下：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+             if (showConditions) {
+                 Text("可用时间", style = MaterialTheme.typography.titleMedium)
+                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+@@ -90,10 +118,16 @@ fun HomeScreen(
+                 }
+             }
+             state.errorMessage?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+-            Spacer(Modifier.height(26.dp))
+-            Button(onClick = viewModel::generateQuest, modifier = Modifier.fillMaxWidth().height(56.dp), enabled = !state.isBusy && !state.isSavingDirection && state.currentGoalId != null) {
++            Spacer(Modifier.height(18.dp))
++            Button(onClick = viewModel::generateQuest, modifier = Modifier.fillMaxWidth().height(60.dp), enabled = !state.isBusy && !state.isSavingDirection && state.currentGoalId != null,
++                shape = MaterialTheme.shapes.large) {
+                 if (state.isGenerating) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+-                else Text("给我今天的一步")
++                else Text("给我今天的一步  →", style = MaterialTheme.typography.titleMedium)
++            }
++            state.recentProgress?.let {
++                Spacer(Modifier.height(18.dp))
++                Text("上次留下 · $it", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
++                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+             }
+             Spacer(Modifier.height(24.dp))
+         }
 diff --git a/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt b/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
 index 264d6e1..1a9df5c 100644
 --- a/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
@@ -899,19 +1082,24 @@ index 264d6e1..1a9df5c 100644
              combine(goals.observeGoals(), questRepository.observeRecentQuests(8)) { allGoals, recent -> allGoals to recent }
                  .collectLatest { (allGoals, recent) ->
 diff --git a/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt b/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt
-index 646f073..65c9951 100644
+index 646f073..aee3478 100644
 --- a/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt
 +++ b/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt
-@@ -8,6 +8,8 @@ import androidx.compose.runtime.*
+@@ -5,9 +5,13 @@ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
  import androidx.compose.ui.Modifier
  import androidx.compose.ui.unit.dp
++import androidx.compose.foundation.shape.CircleShape
  import androidx.lifecycle.compose.collectAsStateWithLifecycle
 +import androidx.activity.compose.rememberLauncherForActivityResult
 +import androidx.activity.result.contract.ActivityResultContracts
  import com.vika.quest.model.DifficultyRating
  import com.vika.quest.model.QuestStatus
  import com.vika.quest.model.RejectionReason
-@@ -18,6 +20,9 @@ fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdj
+@@ -18,33 +22,64 @@ fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdj
      val state by viewModel.uiState.collectAsStateWithLifecycle()
      var rejectionDialog by remember { mutableStateOf(false) }
      var abandonmentDialog by remember { mutableStateOf(false) }
@@ -921,16 +1109,71 @@ index 646f073..65c9951 100644
      LaunchedEffect(state.newQuestId) { state.newQuestId?.let(onReplaced) }
      LaunchedEffect(state.resultReady) { if (state.resultReady) onResult(checkNotNull(state.quest).id) }
      LaunchedEffect(state.abandoned) { if (state.abandoned) onAbandoned() }
-@@ -44,7 +49,7 @@ fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdj
+     Scaffold(contentWindowInsets = WindowInsets.safeDrawing, topBar = { TopAppBar(title = { Text("今天的一步") }, navigationIcon = { TextButton(onClick = onBack) { Text("返回") } }) }) { padding -> Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
+         if (state.isLoading) { CircularProgressIndicator(); return@Column }
+         val quest = state.quest ?: run { Text(state.errorMessage ?: "未找到行动", color = MaterialTheme.colorScheme.error); return@Column }
+-        if (state.goalName.isNotBlank()) Text(state.goalName, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
++        Text("出发前，先看这一步", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
++        Spacer(Modifier.height(8.dp))
+         Text(quest.title, style = MaterialTheme.typography.headlineLarge)
+-        Spacer(Modifier.height(8.dp)); Text("预计 ${quest.estimatedMinutes} 分钟", color = MaterialTheme.colorScheme.onSurfaceVariant)
++        Spacer(Modifier.height(14.dp))
++        Text("${quest.estimatedMinutes} 分钟  ·  ${state.goalName.ifBlank { "当前方向" }}",
++            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+         val reason = quest.reason.ifBlank { "这项行动承接你当前的目标。" }
+-        Spacer(Modifier.height(16.dp)); Text(reason, style = MaterialTheme.typography.bodyLarge)
+-        Section("怎么做") { (quest.steps.ifEmpty { listOf(quest.instruction) }).forEachIndexed { index, step -> Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) { Text("${index + 1}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium); Text(step, style = MaterialTheme.typography.bodyLarge) } } }
+-        Section("完成标准") { quest.completionCriteria.forEach { Text("• $it", modifier = Modifier.padding(vertical = 4.dp)) } }
+-        Section("最终产出") { Text(quest.expectedOutput.ifBlank { "完成上述步骤并保留结果。" }) }
++        Spacer(Modifier.height(20.dp))
++        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer) {
++            Column(Modifier.fillMaxWidth().padding(18.dp)) {
++                Text("为什么是这一步", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++                Spacer(Modifier.height(7.dp))
++                Text(reason, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
++            }
++        }
++        Section("照着做") {
++            (quest.steps.ifEmpty { listOf(quest.instruction) }).forEachIndexed { index, step ->
++                Row(Modifier.padding(vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
++                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
++                        Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
++                            Text("${index + 1}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
++                        }
++                    }
++                    Text(step, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
++                }
++            }
++        }
++        Section("做到这些，就算完成") {
++            quest.completionCriteria.forEach { criterion ->
++                Row(Modifier.padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Text("○", color = MaterialTheme.colorScheme.primary)
++                    Text(criterion, modifier = Modifier.weight(1f))
++                }
++            }
++        }
++        Section("会留下什么") { Text(quest.expectedOutput.ifBlank { "完成上述步骤并保留结果。" }) }
+         state.errorMessage?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+         Spacer(Modifier.height(24.dp))
+         when (quest.status) {
+             QuestStatus.PENDING -> {
+-                Button(onClick = viewModel::startQuest, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth()) { Text("开始行动") }
++                Button(onClick = viewModel::startQuest, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("开始行动  →") }
+                 OutlinedButton(onClick = { rejectionDialog = true }, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth()) { Text("换一个") }
+                 TextButton(onClick = { onAdjusted(quest.sourceIntention, quest.sourceAvailableMinutes, quest.sourceEnergy, quest.sourceResources) }, modifier = Modifier.fillMaxWidth()) { Text("调整条件") }
+             }
+             QuestStatus.ACTIVE -> {
                  Text("行动进行中", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
-                 Spacer(Modifier.height(12.dp)); Button(onClick = viewModel::showCompletion, modifier = Modifier.fillMaxWidth()) { Text("完成行动") }
+-                Spacer(Modifier.height(12.dp)); Button(onClick = viewModel::showCompletion, modifier = Modifier.fillMaxWidth()) { Text("完成行动") }
++                Spacer(Modifier.height(12.dp)); Button(onClick = viewModel::showCompletion, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("完成行动  →") }
                  TextButton(onClick = { abandonmentDialog = true }, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth()) { Text("这一步做不了") }
 -                if (state.showCompletion) CompletionForm(state, viewModel)
 +                if (state.showCompletion) CompletionForm(state, viewModel) { filePicker.launch(arrayOf("*/*")) }
              }
              QuestStatus.COMPLETED -> Button(onClick = { onResult(quest.id) }, modifier = Modifier.fillMaxWidth()) { Text("查看结果") }
              QuestStatus.ABANDONED -> Text("这项行动已结束", color = MaterialTheme.colorScheme.onSurfaceVariant)
-@@ -106,8 +111,13 @@ private fun ActionReviewDialog(state: QuestDetailUiState, vm: QuestDetailViewMod
+@@ -106,8 +141,13 @@ private fun ActionReviewDialog(state: QuestDetailUiState, vm: QuestDetailViewMod
  
  @Composable private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) { Spacer(Modifier.height(24.dp)); HorizontalDivider(); Spacer(Modifier.height(20.dp)); Text(title, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(8.dp)); Column(content = content) }
  
@@ -1079,11 +1322,15 @@ index d6ed877..d6a95ad 100644
      }
  }
 diff --git a/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt b/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt
-index 6c9e91b..40c36a5 100644
+index 6c9e91b..48e8c3f 100644
 --- a/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt
 +++ b/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt
-@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
+@@ -8,32 +8,46 @@ import androidx.compose.runtime.*
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
  import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import com.vika.quest.model.ExpeditionRules
++import com.vika.quest.ui.expedition.TrailArtwork
  
  @Composable
 -fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -> Unit) {
@@ -1091,48 +1338,133 @@ index 6c9e91b..40c36a5 100644
      val state by vm.state.collectAsStateWithLifecycle()
      Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
          Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp)) {
-@@ -19,6 +19,10 @@ fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -
-             Text("这一步，做到了。", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-             Spacer(Modifier.height(12.dp))
-             Text("留下的结果会帮助 Quest 判断下一步。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+             if (state.loading) { CircularProgressIndicator(); return@Column }
+             val result = state.result ?: run { Text("结果未找到"); return@Column }
+-            Text("这一步，做到了。", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+-            Spacer(Modifier.height(12.dp))
+-            Text("留下的结果会帮助 Quest 判断下一步。", color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Text("行动完成", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++            Spacer(Modifier.height(8.dp))
++            Text("又走出了一步。", style = MaterialTheme.typography.headlineLarge)
++            Spacer(Modifier.height(20.dp))
 +            state.goalId?.let {
-+                Spacer(Modifier.height(12.dp))
-+                Text("路线前进一格 · 营地物资 +1", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
++                TrailArtwork(state.completedActions, modifier = Modifier.fillMaxWidth(), height = 178)
++                Spacer(Modifier.height(14.dp))
++                Text("第 ${ExpeditionRules.chapter(state.completedActions)} 章 · 已走 ${state.completedActions} 步",
++                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
++                Text("本次获得 1 份物资 · 当前营地物资 ${state.supplies}",
++                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 +            }
              Spacer(Modifier.height(28.dp))
-             Text("完成了什么", style = MaterialTheme.typography.titleMedium)
+-            Text("完成了什么", style = MaterialTheme.typography.titleMedium)
++            HorizontalDivider()
++            Spacer(Modifier.height(18.dp))
++            Text("这次留下的成果", style = MaterialTheme.typography.titleLarge)
              Spacer(Modifier.height(8.dp))
-@@ -32,6 +36,7 @@ fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -
+             Text(result.analysisSummary ?: result.resultText, style = MaterialTheme.typography.bodyLarge)
+             result.insights.firstOrNull()?.let {
+-                Spacer(Modifier.height(24.dp)); Text("发现", style = MaterialTheme.typography.titleMedium)
++                Spacer(Modifier.height(24.dp)); Text("一个发现", style = MaterialTheme.typography.titleMedium)
+                 Spacer(Modifier.height(8.dp)); Text(it)
+             }
+             result.suggestedNextStep?.takeIf(String::isNotBlank)?.let {
+-                Spacer(Modifier.height(24.dp)); Text("可以接着做", style = MaterialTheme.typography.titleMedium)
++                Spacer(Modifier.height(24.dp)); Text("接下来的方向", style = MaterialTheme.typography.titleMedium)
                  Spacer(Modifier.height(8.dp)); Text(it)
              }
              Spacer(Modifier.height(36.dp))
-+            state.goalId?.let { goalId -> Button(onClick = { onExpedition(goalId) }, modifier = Modifier.fillMaxWidth()) { Text("看看这次推进了哪里") } }
-             Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("先到这里") }
+-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("先到这里") }
++            state.goalId?.let { goalId -> Button(onClick = { onExpedition(goalId) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("去营地看看  →") } }
              OutlinedButton(onClick = { onContinue(result.suggestedNextStep.orEmpty()) }, modifier = Modifier.fillMaxWidth()) { Text("继续这个方向") }
++            TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("先到这里") }
          }
+     }
+ }
 diff --git a/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt b/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt
-index 58a48f7..8d52268 100644
+index 58a48f7..8b23398 100644
 --- a/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt
 +++ b/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt
-@@ -7,5 +7,16 @@ import com.vika.quest.data.repository.QuestRepository
+@@ -4,8 +4,27 @@ import androidx.lifecycle.ViewModel
+ import androidx.lifecycle.viewModelScope
+ import com.vika.quest.data.local.entity.QuestResultEntity
+ import com.vika.quest.data.repository.QuestRepository
++import com.vika.quest.data.repository.ExpeditionRepository
  import kotlinx.coroutines.flow.*
  import kotlinx.coroutines.launch
  
 -data class ResultUiState(val result: QuestResultEntity? = null, val loading: Boolean = true)
 -class ResultViewModel(questId: String, repository: QuestRepository) : ViewModel() { private val _state = MutableStateFlow(ResultUiState()); val state = _state.asStateFlow(); init { viewModelScope.launch { repository.observeResult(questId).collect { _state.value = ResultUiState(it, false) } } } }
-+data class ResultUiState(val result: QuestResultEntity? = null, val loading: Boolean = true, val goalId: String? = null)
-+class ResultViewModel(questId: String, repository: QuestRepository) : ViewModel() {
++data class ResultUiState(
++    val result: QuestResultEntity? = null,
++    val loading: Boolean = true,
++    val goalId: String? = null,
++    val completedActions: Int = 0,
++    val supplies: Int = 0,
++)
++class ResultViewModel(questId: String, repository: QuestRepository, expeditions: ExpeditionRepository) : ViewModel() {
 +    private val _state = MutableStateFlow(ResultUiState())
 +    val state = _state.asStateFlow()
 +    init {
 +        viewModelScope.launch {
 +            repository.observeResult(questId).collect { result ->
 +                val goalId = if (result == null) null else repository.getQuest(questId)?.goalId
-+                _state.value = ResultUiState(result, false, goalId)
++                val journey = goalId?.let { expeditions.get(it) }
++                _state.value = ResultUiState(result, false, goalId, journey?.completedActions ?: 0, journey?.supplies ?: 0)
 +            }
 +        }
 +    }
 +}
+diff --git a/app/src/main/java/com/vika/quest/ui/theme/Theme.kt b/app/src/main/java/com/vika/quest/ui/theme/Theme.kt
+index 1fd7fd6..6ed1020 100644
+--- a/app/src/main/java/com/vika/quest/ui/theme/Theme.kt
++++ b/app/src/main/java/com/vika/quest/ui/theme/Theme.kt
+@@ -11,25 +11,33 @@ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.ui.unit.dp
+ 
+ private val LightColors = lightColorScheme(
+-    primary = Color(0xFF356B63),
++    primary = Color(0xFF356E61),
+     onPrimary = Color.White,
+-    primaryContainer = Color(0xFFDCF3E9),
+-    onPrimaryContainer = Color(0xFF123E37),
+-    secondary = Color(0xFF936451),
+-    background = Color(0xFFFFFAF5),
+-    surface = Color(0xFFFFFAF5),
+-    surfaceVariant = Color(0xFFF3EBE4),
++    primaryContainer = Color(0xFFDBF0E4),
++    onPrimaryContainer = Color(0xFF183F36),
++    secondary = Color(0xFF9A6A51),
++    secondaryContainer = Color(0xFFFFEBD8),
++    onSecondaryContainer = Color(0xFF593B2D),
++    tertiary = Color(0xFFE7A65E),
++    background = Color(0xFFFFFBF5),
++    surface = Color(0xFFFFFBF5),
++    surfaceVariant = Color(0xFFF3ECE2),
++    outlineVariant = Color(0xFFD8D6C9),
+ )
+ 
+ private val DarkColors = darkColorScheme(
+-    primary = Color(0xFFA6D9C7),
++    primary = Color(0xFFA8DCC9),
+     onPrimary = Color(0xFF113C34),
+-    primaryContainer = Color(0xFF245449),
++    primaryContainer = Color(0xFF244E44),
+     onPrimaryContainer = Color(0xFFE2F5EB),
+-    secondary = Color(0xFFE7B59E),
+-    background = Color(0xFF151B1A),
+-    surface = Color(0xFF151B1A),
+-    surfaceVariant = Color(0xFF34413C),
++    secondary = Color(0xFFE9B99F),
++    secondaryContainer = Color(0xFF49382F),
++    onSecondaryContainer = Color(0xFFFFE6CF),
++    tertiary = Color(0xFFF1BF7F),
++    background = Color(0xFF151C1A),
++    surface = Color(0xFF151C1A),
++    surfaceVariant = Color(0xFF34423B),
++    outlineVariant = Color(0xFF58665C),
+ )
+ 
+ private val SoftShapes = Shapes(
 diff --git a/app/src/main/res/xml/artifact_paths.xml b/app/src/main/res/xml/artifact_paths.xml
 new file mode 100644
 index 0000000..de93500
