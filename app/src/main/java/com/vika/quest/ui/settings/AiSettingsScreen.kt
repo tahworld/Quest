@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -44,13 +45,14 @@ fun AiSettingsScreen(vm: AiSettingsViewModel, onBack: () -> Unit) {
         },
     ) { padding ->
         androidx.compose.foundation.layout.Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+            Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
             Text("当前使用：${state.activeProvider}", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(state.baseUrl, vm::baseUrl, Modifier.fillMaxWidth(), label = { Text("Base URL") }, singleLine = true)
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(state.model, vm::model, Modifier.fillMaxWidth(), label = { Text("模型") }, singleLine = true)
+            Text("生成行动与按需答疑使用同一个已保存模型：${state.model}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (state.availableModels.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 Text("账号可用模型", style = MaterialTheme.typography.labelLarge)
