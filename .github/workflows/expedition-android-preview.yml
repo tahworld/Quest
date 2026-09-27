@@ -1,0 +1,45 @@
+name: Quest expedition preview
+
+on:
+  pull_request:
+    paths:
+      - expedition-code.patch
+      - .github/workflows/expedition-android-preview.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Apply expedition changes
+        run: |
+          git apply --check expedition-code.patch
+          git apply expedition-code.patch
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install Android SDK packages
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.1.0"
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+      - name: Run unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Build Debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Compile Android tests
+        run: ./gradlew --no-daemon :app:compileDebugAndroidTestSources
+      - name: Verify APK signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Quest-expedition-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
