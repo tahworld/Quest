@@ -30,6 +30,50 @@ class FakeAiProviderTest {
         assertTrue(second.refinedIntention.contains("梳理产品方向"))
     }
 
+    @Test fun reviewAnswersAndOnlyProposesWhenConditionsConflict() = runBlocking {
+        val provider = FakeAiProvider()
+        val base = QuestReviewContext(
+            QuestSnapshot("q", "g", null, "复述一个阅读观点", "PENDING", null), "承接阅读",
+            listOf("打开材料复述一小段"), listOf("留下一条观点"), "一条阅读笔记", "继续阅读", 5, 3,
+            setOf(QuestResource.PHONE), GoalSnapshot("g", "读书", "阅读/学习：读书", 0), null,
+            emptyList(), emptyList(), "为什么要做？", emptyList(),
+        )
+        assertNull(provider.reviewQuest(base).proposedQuest)
+        val blocked = provider.reviewQuest(base.copy(question = "现在没时间，能改吗？"))
+        assertNotNull(blocked.proposedQuest)
+        AiActionReviewValidator(AiQuestDraftValidator()).validate(blocked, base.copy(question = "现在没时间，能改吗？"))
+        Unit
+    }
+
+    @Test fun fakeContinuesPreviousReadingResult() = runBlocking {
+        val goal = GoalSnapshot("g", "现有教材", "阅读/学习：现有教材", 0)
+        val base = QuestGenerationContext("", 5, 3, setOf(QuestResource.PHONE), listOf(goal), emptyList(), emptyList(),
+            listOf(QuestSnapshot("previous", "g", null, "从现有材料提取一个可复述的观点", "COMPLETED", "记下一个观点")), emptyList(), emptyList(), currentDirection = goal)
+        val draft = FakeAiProvider().generateQuest(base)
+        assertTrue(draft.steps.any { it.contains("记下一个观点") })
+        AiQuestDraftValidator().validate(draft, base)
+        Unit
+    }
+
+    @Test fun readingOnPhoneInFiveMinutesLeavesARealNote() = runBlocking {
+        val goal = GoalSnapshot("reading", "手头的机械教材", "阅读/学习：手头的机械教材", 0)
+        val context = QuestGenerationContext("", 5, 3, setOf(QuestResource.PHONE), listOf(goal), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), currentDirection = goal)
+        val draft = FakeAiProvider().generateQuest(context)
+        assertEquals(5, draft.estimatedMinutes)
+        assertTrue(draft.expectedOutput.contains("笔记"))
+        AiQuestDraftValidator().validate(draft, context)
+        Unit
+    }
+
+    @Test fun physicalDirectionWithoutMovementDoesNotOrderExercise() = runBlocking {
+        val goal = GoalSnapshot("movement", "恢复轻量运动", "身体活动：恢复轻量运动", 0)
+        val context = QuestGenerationContext("", 5, 1, setOf(QuestResource.PHONE), listOf(goal), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), currentDirection = goal)
+        val draft = FakeAiProvider().generateQuest(context)
+        assertFalse(draft.steps.any { "步行" in it || "冲刺" in it })
+        AiQuestDraftValidator().validate(draft, context)
+        Unit
+    }
+
     private fun clarificationContext(history: List<ClarificationExchange>) = QuestClarificationContext(
         "梳理产品方向", 15, 3, setOf(QuestResource.PHONE), emptyList(), emptyList(), emptyList(), history,
     )

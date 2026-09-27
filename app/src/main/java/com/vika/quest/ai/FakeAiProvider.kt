@@ -1,6 +1,24 @@
 package com.vika.quest.ai
 
 class FakeAiProvider : AiProvider {
+    override suspend fun reviewQuest(context: QuestReviewContext): AiActionReviewReply {
+        val blocked = listOf("太难", "没时间", "时间不够", "做不了", "无法", "没电脑", "不方便").any { it in context.question }
+        if (!blocked || context.quest.status != "PENDING") return AiActionReviewReply(
+            answer = "这一步的目标是“${context.expectedOutput.take(100)}”。先做第 1 步：${context.steps.firstOrNull().orEmpty()}；满足“${context.completionCriteria.firstOrNull().orEmpty()}”就可以结束。",
+            adjustmentReason = null, proposedQuest = null,
+        )
+        val draft = AiQuestDraft(
+            title = "把“${context.quest.title.take(20)}”缩成一条可执行记录",
+            reason = "你提出的条件冲突值得先解除；在原方向上缩小范围。",
+            estimatedMinutes = minOf(5, context.availableMinutes),
+            steps = listOf("在当前可用设备上记录卡住的具体一步和缺少的条件", "写出一个此刻能完成的替代动作，并记录执行结果"),
+            completionCriteria = listOf("留下一条具体障碍和一次替代动作的执行记录"),
+            expectedOutput = "一条包含原行动障碍、替代动作和实际结果的记录。",
+            relatedGoalId = context.goal?.id, relatedProjectId = context.project?.id,
+        )
+        return AiActionReviewReply("你的条件可能不适合原步骤，先不要硬做。可以缩成一条可保存的执行记录。", "当前条件与原步骤冲突。", draft)
+    }
+
     override suspend fun clarifyQuest(context: QuestClarificationContext): AiClarificationTurn = when (context.history.size) {
         0 -> AiClarificationTurn(
             status = ClarificationStatus.ASK,
@@ -54,18 +72,54 @@ class FakeAiProvider : AiProvider {
     override suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft {
         val intention = context.userIntention.trim()
         val project = context.projects.firstOrNull()
-        val goal = context.goals.firstOrNull()
-        val subject = intention.ifBlank { project?.name ?: goal?.name ?: "当前最重要的方向" }
-        val previous = context.rejectedQuest
-        return AiQuestDraft(
-            title = "写出“${subject.take(28)}”的三项下一步清单",
-            reason = if (previous == null) "把当前方向收敛成今天可以执行和保存的具体下一步。" else "已避开刚才被拒绝的任务，并把范围缩小为一份可直接使用的清单。",
-            estimatedMinutes = minOf(15, context.availableMinutes),
-            steps = listOf("打开备忘录，写下你希望推进的具体结果", "列出三个按顺序可执行的下一步，每步写清动作和对象", "圈出最先执行的一步，并补充开始所需的材料"),
-            completionCriteria = listOf("清单中恰好包含三个可执行步骤", "每一步都有明确动作和对象", "已标记下一次首先执行的步骤"),
-            expectedOutput = "一份可保存的三步行动清单，其中第一步已明确标记。",
-            relatedGoalId = goal?.id,
-            relatedProjectId = project?.id,
+        val goal = context.currentDirection ?: context.goals.firstOrNull()
+        val subject = intention.ifBlank { goal?.name ?: project?.name ?: "当前方向" }.take(28)
+        val last = context.recentQuests.firstOrNull { it.status == "COMPLETED" && it.goalId == goal?.id }
+        val blocked = context.rejectedQuest != null || context.recentRejections.isNotEmpty() || context.recentQuests.firstOrNull { it.goalId == goal?.id }?.status == "ABANDONED"
+        val reason = when {
+            blocked -> "承接同一方向，并把上次做不了的步骤缩小到当前条件允许的范围。"
+            last?.resultSummary != null -> "承接你上次留下的“${last.resultSummary.take(60)}”，不重复已做过的起点。"
+            else -> "从你选定的方向出发，先留下一个能接续的具体结果。"
+        }
+        val category = goal?.description.orEmpty()
+        val content = when {
+            intention.isNotBlank() -> AiQuestDraft(
+                if (last?.resultSummary == null) "记录“$subject”的一个具体判断和依据" else "核实“${last?.resultSummary.orEmpty().take(14)}”里的一个缺口",
+                reason, minOf(10, context.availableMinutes),
+                if (last?.resultSummary == null) listOf("打开备忘录，写下“$subject”中此刻最需要判断的一个具体问题", "针对该问题列出一条已知事实和一个待核实的缺口", "写下基于这些信息可以立即采取的一个下一步")
+                else listOf("打开上次的记录：“${last?.resultSummary.orEmpty().take(70)}”", "针对上次留下的缺口找一条可用证据或明确当前拿不到证据的原因", "记下因此改变的下一步"),
+                listOf("记录中有一条事实、一个缺口和一个针对当前想法的下一步"), "一条关于“$subject”的判断记录，包含事实、缺口和下一步。", goal?.id, project?.id,
+            )
+            "身体活动" in category -> if (QuestResource.CAN_MOVE_OR_EXERCISE in context.resources && context.energy >= 2) AiQuestDraft(
+                if (last?.resultSummary == null) "做一段舒适步行并记录身体感受" else "参考上次感受步行并记录变化", reason, minOf(5, context.availableMinutes),
+                listOf("选择安全、容易到达的路线，以舒适速度步行；不追求强度", "停下后记录走了多久和此刻的感受"),
+                listOf("完成一段自己感觉舒适的步行并留下时长与感受"), "一条步行时长与身体感受记录。", goal?.id, null,
+            ) else AiQuestDraft(
+                "为下一次轻量活动记录一个可行窗口", "当前条件不适合直接训练，先排除开始的障碍。", minOf(5, context.availableMinutes),
+                listOf("写下下一次可以安全走动的具体时段和地点", "列出目前阻止你开始的一项条件及一个替代方案"),
+                listOf("记录包含具体时段、地点、障碍和替代方案"), "一条可执行的轻量活动安排记录。", goal?.id, null,
+            )
+            "阅读/学习" in category -> if (last?.resultSummary != null) AiQuestDraft(
+                "为“${last?.resultSummary.orEmpty().take(14)}”写一个新例子", reason, minOf(5, context.availableMinutes),
+                listOf("打开上次的阅读记录：“${last.resultSummary.take(70)}”", "用自己的话写出其中一个观点适用的具体例子"),
+                listOf("新增一个与上次观点直接相关的具体例子"), "一条例子笔记，链接到上次阅读记录。", goal?.id, null,
+            ) else AiQuestDraft(
+                "从现有材料提取一个可复述的观点", reason, minOf(5, context.availableMinutes),
+                listOf("打开“${goal?.name ?: "你已有的材料"}”对应的书籍或学习材料，选一小段", "合上材料，用自己的话写出一个观点和对应的原文位置"),
+                listOf("留下一个用自己语言复述的观点和可回看的位置"), "一条包含观点与材料位置的阅读笔记。", goal?.id, null,
+            )
+            else -> AiQuestDraft(
+                if (last?.resultSummary == null) "为“$subject”核实一个当前阻碍" else "核对“${last?.resultSummary.orEmpty().take(14)}”的下一项假设",
+                reason, minOf(5, context.availableMinutes),
+                listOf("查看“${last?.resultSummary?.take(70) ?: subject}”的实际进展，指出阻止下一步的一项具体问题", "用当前可用设备记录一个可以立即检验的小动作，并执行它", "写下执行后的观察或新发现"),
+                listOf("记录中包含当前阻碍、已经执行的检验和实际观察"), "一条关于“$subject”的阻碍检验及观察记录。", goal?.id, project?.id,
+            )
+        }
+        return if (!blocked) content else content.copy(
+            title = "缩小范围：${content.title}",
+            steps = content.steps.take(2),
+            completionCriteria = content.completionCriteria.take(1),
+            estimatedMinutes = minOf(5, context.availableMinutes),
         )
     }
 

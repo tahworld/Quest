@@ -26,5 +26,16 @@ class RepositoryPersistenceTest {
         quests.startQuest(second.id); quests.completeQuest(second.id, NewQuestResult("保存了一份价格对比表", 12, DifficultyRating.APPROPRIATE, 4), 4)
         assertEquals(QuestStatus.COMPLETED, quests.getQuest(second.id)?.status); assertEquals("保存了一份价格对比表", quests.getResult(second.id)?.resultText); assertEquals(2, quests.observeQuests().first().size)
     }
+    @Test fun reviewProposalRequiresExplicitRepositoryCallAndAbandonSavesReason() = runBlocking {
+        val goal = goals.createGoal("身体活动", "建立轻量活动习惯")
+        val original = quests.createQuest(newQuest(goal.id, "舒适步行并记录感受"))
+        assertEquals("舒适步行并记录感受", quests.getQuest(original.id)?.title)
+        quests.adjustPendingQuest(original.id, newQuest(goal.id, "记录可行的步行时段"))
+        assertEquals("记录可行的步行时段", quests.getQuest(original.id)?.title)
+        quests.startQuest(original.id)
+        quests.abandonQuest(original.id, RejectionReason.CANNOT_DO_NOW, "时间不够")
+        assertEquals(QuestStatus.ABANDONED, quests.getQuest(original.id)?.status)
+        assertEquals("时间不够", quests.getRecentRejections(1).single().details)
+    }
     private fun newQuest(goal: String, title: String) = NewQuest(goal, title = title, reason = "测试", steps = listOf("打开记录表", "写入三项证据"), instruction = "打开记录表并写入三项证据", estimatedMinutes = 15, completionCriteria = listOf("三项均已记录"), expectedOutput = "一份三项记录", sourceIntention = "研究市场", sourceAvailableMinutes = 15, sourceEnergy = 3, sourceResources = listOf("PHONE"))
 }

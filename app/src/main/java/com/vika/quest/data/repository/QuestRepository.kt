@@ -36,15 +36,27 @@ class QuestRepository(private val database: QuestDatabase) {
 
     suspend fun saveQuest(quest: QuestEntity) = questDao.upsert(quest)
 
+    suspend fun adjustPendingQuest(id: String, proposal: NewQuest): QuestEntity = database.withTransaction {
+        val current = checkNotNull(questDao.getById(id)) { "行动不存在" }
+        check(current.status == QuestStatus.PENDING) { "只有尚未开始的行动可以调整" }
+        current.copy(
+            goalId = proposal.goalId, projectId = proposal.projectId, title = proposal.title,
+            reason = proposal.reason, steps = proposal.steps, instruction = proposal.instruction,
+            estimatedMinutes = proposal.estimatedMinutes, completionCriteria = proposal.completionCriteria,
+            expectedOutput = proposal.expectedOutput, difficulty = proposal.difficulty,
+        ).also { questDao.update(it) }
+    }
+
     suspend fun startQuest(id: String) = database.withTransaction {
         val quest = checkNotNull(questDao.getById(id)) { "任务不存在" }
         check(quest.status == QuestStatus.PENDING) { "只有待开始任务可以启动" }
         questDao.update(quest.copy(status = QuestStatus.ACTIVE))
     }
 
-    suspend fun abandonQuest(id: String) = database.withTransaction {
+    suspend fun abandonQuest(id: String, reason: RejectionReason? = null, details: String? = null) = database.withTransaction {
         val quest = checkNotNull(questDao.getById(id)) { "任务不存在" }
         check(quest.status == QuestStatus.ACTIVE) { "只有进行中的任务可以放弃" }
+        if (reason != null) rejectionDao.upsert(QuestRejectionEntity(UUID.randomUUID().toString(), id, reason, details?.trim()?.takeIf(String::isNotBlank), System.currentTimeMillis()))
         questDao.update(quest.copy(status = QuestStatus.ABANDONED))
     }
 

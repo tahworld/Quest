@@ -25,7 +25,8 @@ class Phase3GenerationTest {
         val goals = GoalRepository(db.goalDao()); goals.createGoal("商业能力", "发现需求")
         val quests = QuestRepository(db)
         val builder = ContextBuilder(goals, ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao()))
-        val vm = HomeViewModel(SavedStateHandle(), builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator())
+        val vm = HomeViewModel(SavedStateHandle(), builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
+        withTimeout(2_000) { vm.uiState.first { it.currentGoalId != null } }
         vm.setIntention("研究 AI 产品如何获客"); vm.generateQuest(); vm.generateQuest(); vm.generateQuest()
         withTimeout(2_000) { vm.uiState.first { it.generatedQuestId != null } }
         assertEquals(1, quests.observeQuests().first().size)
@@ -36,7 +37,7 @@ class Phase3GenerationTest {
         val quests = QuestRepository(db)
         val builder = ContextBuilder(goals, ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao()))
         val handle = SavedStateHandle()
-        val firstVm = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator())
+        val firstVm = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
         firstVm.setIntention("研究 AI 产品如何获客")
         firstVm.startClarification()
         val firstQuestion = withTimeout(2_000) { firstVm.uiState.first { it.clarificationQuestion != null } }
@@ -44,7 +45,7 @@ class Phase3GenerationTest {
         firstVm.submitClarificationAnswer()
         withTimeout(2_000) { firstVm.uiState.first { it.clarificationHistory.size == 1 && it.clarificationQuestion != null } }
 
-        val restored = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator())
+        val restored = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
         assertEquals(1, restored.uiState.value.clarificationHistory.size)
         restored.setClarificationAnswer(restored.uiState.value.clarificationOptions.first())
         restored.submitClarificationAnswer()
@@ -57,7 +58,7 @@ class Phase3GenerationTest {
         val quests = QuestRepository(db)
         val builder = ContextBuilder(goals, ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao()))
         val provider = AlwaysAskProvider()
-        val vm = HomeViewModel(SavedStateHandle(), builder, quests, provider, AiQuestDraftValidator(), AiClarificationValidator())
+        val vm = HomeViewModel(SavedStateHandle(), builder, quests, provider, AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
         vm.setIntention("研究 AI 产品如何获客")
         vm.startClarification(); vm.startClarification(); vm.startClarification()
         repeat(3) { index ->
@@ -78,6 +79,7 @@ class Phase3GenerationTest {
             return AiClarificationTurn(ClarificationStatus.ASK, "第 ${context.history.size + 1} 个关键选择是什么？", listOf("保留当前方向", "缩小行动范围"), true, null)
         }
         override suspend fun continueMentorConversation(context: MentorConversationContext) = fake.continueMentorConversation(context)
+        override suspend fun reviewQuest(context: QuestReviewContext) = fake.reviewQuest(context)
         override suspend fun generateQuest(context: QuestGenerationContext) = fake.generateQuest(context)
         override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = fake.analyzeQuestResult(context)
         override suspend fun testConnection(settings: AiConnectionSettings) = AiConnectionResult(true, "测试")

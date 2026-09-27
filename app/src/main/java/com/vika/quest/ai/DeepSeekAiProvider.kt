@@ -16,6 +16,21 @@ class DeepSeekAiProvider(
     private val resultValidator: AiQuestResultValidator,
     private val promptBuilder: QuestPromptBuilder,
 ) : AiProvider {
+    override suspend fun reviewQuest(context: QuestReviewContext): AiActionReviewReply {
+        val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
+        val system = promptBuilder.actionReview(context)
+        val user = AiJsonCodec.actionReviewContext(context)
+        var raw = chat(settings, system, user, maxTokens = 1_000)
+        val validator = AiActionReviewValidator(questValidator)
+        repeat(2) { attempt ->
+            try { return validator.validate(AiJsonCodec.parseActionReview(raw), context) }
+            catch (error: Exception) {
+                if (attempt == 1) throw IllegalArgumentException("AI 返回的行动答疑无效：${error.message}")
+                raw = chat(settings, system, user + "\n\n" + QuestPrompts.repair(error.message.orEmpty(), raw), maxTokens = 1_000)
+            }
+        }
+        error("AI 返回的行动答疑无效")
+    }
     override suspend fun clarifyQuest(context: QuestClarificationContext): AiClarificationTurn {
         val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
         var raw = chat(settings, promptBuilder.clarification(context), AiJsonCodec.clarificationContext(context), maxTokens = 700)
@@ -83,8 +98,22 @@ class DeepSeekAiProvider(
     }
 
     private suspend fun chat(settings: AiConnectionSettings, system: String, user: String, maxTokens: Int = 1600): String {
-        val body = request(settings, "/chat/completions", "POST", AiJsonCodec.chatRequest(settings.model, system, user, maxTokens))
-        return runCatching { AiJsonCodec.contentFromChatResponse(body) }.getOrElse { throw IOException("DeepSeek 响应缺少有效内容") }.also { if (it.isBlank()) throw IOException("DeepSeek 返回了空内容") }
+        suspend fun response(prompt: String, limit: Int, effort: String? = null): AiJsonCodec.ChatResponse {
+            val body = request(settings, "/chat/completions", "POST", AiJsonCodec.chatRequest(settings.model, system, prompt, limit, effort))
+            return runCatching { AiJsonCodec.parseChatResponse(body) }
+                .getOrElse { throw IOException("DeepSeek 响应格式异常，请重试") }
+        }
+        val first = response(user, maxTokens)
+        if (!first.content.isNullOrBlank()) return first.content
+        if (first.finishReason == "content_filter") throw IOException("DeepSeek 未能处理这次内容，请调整描述后重试")
+
+        // DeepSeek documents occasional empty content in JSON mode. One bounded retry
+        // disables thinking so the JSON answer has the full output budget.
+        val retryPrompt = user + "\n\n上次响应没有内容。请直接输出完整的 JSON 对象，不要输出分析过程或空白。"
+        val retry = response(retryPrompt, maxOf(maxTokens, 4_096), "none")
+        if (retry.finishReason == "content_filter") throw IOException("DeepSeek 未能处理这次内容，请调整描述后重试")
+        return retry.content?.takeIf(String::isNotBlank)
+            ?: throw IOException("DeepSeek 连续返回空内容，请重试或在 AI 设置中切换模型")
     }
 
     private suspend fun request(settings: AiConnectionSettings, path: String, method: String, body: String?): String = withContext(Dispatchers.IO) {
@@ -112,6 +141,7 @@ class ConfiguredAiProvider(private val settings: AiSettingsStore, private val de
     private fun active(): AiProvider = if (settings.readPublic().hasApiKey) deepSeek else fake
     override suspend fun clarifyQuest(context: QuestClarificationContext) = active().clarifyQuest(context)
     override suspend fun continueMentorConversation(context: MentorConversationContext) = active().continueMentorConversation(context)
+    override suspend fun reviewQuest(context: QuestReviewContext) = active().reviewQuest(context)
     override suspend fun generateQuest(context: QuestGenerationContext) = active().generateQuest(context)
     override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = active().analyzeQuestResult(context)
     override suspend fun testConnection(settings: AiConnectionSettings) = deepSeek.testConnection(settings)

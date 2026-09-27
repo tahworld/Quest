@@ -11,11 +11,19 @@ import com.vika.quest.ai.ClarificationStatus
 import com.vika.quest.ai.ContextBuilder
 import com.vika.quest.ai.QuestResource
 import com.vika.quest.data.repository.QuestRepository
+import com.vika.quest.data.repository.GoalRepository
+import com.vika.quest.data.repository.UserPreferenceRepository
+import com.vika.quest.data.repository.UserPreferenceKeys
+import com.vika.quest.data.local.entity.GoalEntity
+import com.vika.quest.model.DirectionChoice
+import com.vika.quest.model.QuestStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 data class HomeUiState(
@@ -33,6 +41,10 @@ data class HomeUiState(
     val clarificationHistory: List<ClarificationExchange> = emptyList(),
     val generatedQuestId: String? = null,
     val errorMessage: String? = null,
+    val goals: List<GoalEntity> = emptyList(),
+    val currentGoalId: String? = null,
+    val recentProgress: String? = null,
+    val isSavingDirection: Boolean = false,
 ) {
     val isBusy: Boolean get() = isGenerating || isClarifying
     val isClarificationActive: Boolean get() = clarificationQuestion != null
@@ -46,6 +58,8 @@ class HomeViewModel(
     private val aiProvider: AiProvider,
     private val questValidator: AiQuestDraftValidator,
     private val clarificationValidator: AiClarificationValidator,
+    private val goals: GoalRepository,
+    private val preferences: UserPreferenceRepository,
 ) : ViewModel() {
     private val restoredHistory = restoreHistory()
     private val _uiState = MutableStateFlow(
@@ -64,6 +78,50 @@ class HomeViewModel(
         ),
     )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            combine(goals.observeGoals(), questRepository.observeRecentQuests(8)) { allGoals, recent -> allGoals to recent }
+                .collectLatest { (allGoals, recent) ->
+                    val stored = preferences.get(UserPreferenceKeys.ACTIVE_DIRECTION_GOAL_ID)
+                    val selected = allGoals.firstOrNull { it.id == stored } ?: allGoals.firstOrNull()
+                    val latest = recent.firstOrNull { it.goalId == selected?.id && it.status == QuestStatus.COMPLETED }
+                    val result = latest?.let { questRepository.getResult(it.id) }
+                    _uiState.update { it.copy(goals = allGoals, currentGoalId = selected?.id, recentProgress = result?.resultText?.take(160)) }
+                }
+        }
+    }
+
+    fun selectDirection(id: String) {
+        if (_uiState.value.isBusy || _uiState.value.isSavingDirection || _uiState.value.goals.none { it.id == id }) return
+        _uiState.update { it.copy(isSavingDirection = true) }
+        viewModelScope.launch {
+            try {
+                preferences.save(UserPreferenceKeys.ACTIVE_DIRECTION_GOAL_ID, id)
+                val recent = questRepository.getRecentQuests(20).firstOrNull { it.goalId == id && it.status == QuestStatus.COMPLETED }
+                val result = recent?.let { questRepository.getResult(it.id) }
+                _uiState.update { it.copy(currentGoalId = id, recentProgress = result?.resultText?.take(160), isSavingDirection = false, errorMessage = null) }
+            } catch (error: Exception) {
+                _uiState.update { it.copy(isSavingDirection = false, errorMessage = "方向保存失败，请重试。") }
+            }
+        }
+    }
+
+    fun addDirection(choice: DirectionChoice, description: String) {
+        val text = description.trim()
+        if (_uiState.value.isBusy || _uiState.value.isSavingDirection) return
+        if (text.isBlank()) { _uiState.update { it.copy(errorMessage = "写下你要推进的具体方向。") }; return }
+        _uiState.update { it.copy(isSavingDirection = true, errorMessage = null) }
+        viewModelScope.launch {
+            try {
+                val goal = goals.createGoal(text, "${choice.label}：$text")
+                preferences.save(UserPreferenceKeys.ACTIVE_DIRECTION_GOAL_ID, goal.id)
+                _uiState.update { it.copy(currentGoalId = goal.id, recentProgress = null, isSavingDirection = false) }
+            } catch (error: Exception) {
+                _uiState.update { it.copy(isSavingDirection = false, errorMessage = "方向保存失败，请重试。") }
+            }
+        }
+    }
 
     fun setIntention(value: String) {
         savedState[INTENTION] = value
@@ -121,7 +179,7 @@ class HomeViewModel(
 
     fun generateQuest() {
         val current = _uiState.value
-        if (current.isBusy || current.generatedQuestId != null) return
+        if (current.isBusy || current.isSavingDirection || current.currentGoalId == null || current.generatedQuestId != null) return
         clearClarification()
         _uiState.update { it.copy(isGenerating = true, errorMessage = null) }
         viewModelScope.launch { generateAndPersist(current.intention, current) }
