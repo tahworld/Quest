@@ -1,0 +1,1194 @@
+diff --git a/.github/workflows/android-ci.yml b/.github/workflows/android-ci.yml
+index 304560f..7417b90 100644
+--- a/.github/workflows/android-ci.yml
++++ b/.github/workflows/android-ci.yml
+@@ -56,6 +56,14 @@ jobs:
+       - name: Compile Android tests
+         run: ./gradlew --no-daemon :app:compileDebugAndroidTestSources
+ 
++      - name: Upload exported Room schemas
++        uses: actions/upload-artifact@v7
++        with:
++          name: Quest-room-schemas
++          path: app/schemas/
++          if-no-files-found: error
++          retention-days: 7
++
+       - name: Verify APK signing certificate
+         run: |
+           "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+diff --git a/app/src/androidTest/java/com/vika/quest/data/local/Migration1To2Test.kt b/app/src/androidTest/java/com/vika/quest/data/local/Migration1To2Test.kt
+index e0749c5..0caaefe 100644
+--- a/app/src/androidTest/java/com/vika/quest/data/local/Migration1To2Test.kt
++++ b/app/src/androidTest/java/com/vika/quest/data/local/Migration1To2Test.kt
+@@ -1,12 +1,14 @@
+ package com.vika.quest.data.local
+ 
+ import androidx.room.testing.MigrationTestHelper
++import androidx.room.Room
+ import androidx.test.ext.junit.runners.AndroidJUnit4
+ import androidx.test.platform.app.InstrumentationRegistry
+ import org.junit.Test
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertTrue
+ import org.junit.runner.RunWith
++import kotlinx.coroutines.runBlocking
+ 
+ @RunWith(AndroidJUnit4::class)
+ class Migration1To2Test {
+@@ -17,8 +19,29 @@ class Migration1To2Test {
+             execSQL("INSERT INTO quests (id,goalId,skillId,chainId,title,instruction,estimatedMinutes,completionCriteria,difficulty,status,createdAt,completedAt) VALUES ('q','g',NULL,NULL,'旧任务','旧说明',15,'[\"完成\"]',2,'ACTIVE',2,NULL)")
+             close()
+         }
+-        helper.runMigrationsAndValidate("migration-test", 2, true, QuestDatabase.MIGRATION_1_2).use { db ->
++        helper.runMigrationsAndValidate("migration-test", 3, true, QuestDatabase.MIGRATION_1_2, QuestDatabase.MIGRATION_2_3).use { db ->
+             db.query("SELECT goalId,title,sourceAvailableMinutes,status FROM quests WHERE id='q'").use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals("g", cursor.getString(0)); assertEquals("旧任务", cursor.getString(1)); assertEquals(15, cursor.getInt(2)); assertEquals("ACTIVE", cursor.getString(3)) }
+         }
+     }
++
++    @Test fun v2CompletionBecomesExplorationAndArtifact() = runBlocking {
++        helper.createDatabase("migration-from-v2", 1).apply {
++            execSQL("INSERT INTO goals (id,name,description,priority,createdAt) VALUES ('g','项目','推进项目',1,1)")
++            execSQL("INSERT INTO quests (id,goalId,skillId,chainId,title,instruction,estimatedMinutes,completionCriteria,difficulty,status,createdAt,completedAt) VALUES ('q','g',NULL,NULL,'旧成果','完成一次行动',15,'[\"完成\"]',2,'COMPLETED',2,3)")
++            QuestDatabase.MIGRATION_1_2.migrate(this)
++            execSQL("INSERT INTO quest_results (id,questId,resultText,actualMinutes,difficultyRating,usefulnessRating,createdAt,analysisSummary,evidence,insights,projectProgress,suggestedNextStep) VALUES ('r','q','写出了一份笔记',12,NULL,NULL,3,NULL,'[]','[]',NULL,NULL)")
++            version = 2
++            close()
++        }
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val db = Room.databaseBuilder(context, QuestDatabase::class.java, "migration-from-v2")
++            .addMigrations(QuestDatabase.MIGRATION_1_2, QuestDatabase.MIGRATION_2_3)
++            .allowMainThreadQueries().build()
++        try {
++            assertEquals(1, db.expeditionDao().get("g")?.completedActions)
++            assertEquals(1, db.expeditionDao().get("g")?.supplies)
++            assertEquals("写出了一份笔记", db.artifactDao().getForQuest("q")?.value)
++            assertEquals("COMPLETED", db.questDao().getById("q")?.status?.name)
++        } finally { db.close() }
++    }
+ }
+diff --git a/app/src/androidTest/java/com/vika/quest/data/repository/ExpeditionPersistenceTest.kt b/app/src/androidTest/java/com/vika/quest/data/repository/ExpeditionPersistenceTest.kt
+new file mode 100644
+index 0000000..325508f
+--- /dev/null
++++ b/app/src/androidTest/java/com/vika/quest/data/repository/ExpeditionPersistenceTest.kt
+@@ -0,0 +1,42 @@
++package com.vika.quest.data.repository
++
++import androidx.room.Room
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import com.vika.quest.data.local.QuestDatabase
++import com.vika.quest.model.CampBuilding
++import com.vika.quest.model.NewQuest
++import kotlinx.coroutines.flow.first
++import kotlinx.coroutines.runBlocking
++import org.junit.Assert.*
++import org.junit.Test
++import org.junit.runner.RunWith
++
++@RunWith(AndroidJUnit4::class)
++class ExpeditionPersistenceTest {
++    @Test fun completionRewardsOnceAndStoresArtifact() = runBlocking {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val db = Room.inMemoryDatabaseBuilder(context, QuestDatabase::class.java).allowMainThreadQueries().build()
++        try {
++            val goal = GoalRepository(db.goalDao()).createGoal("建设自己的 App", "继续做产品")
++            val quests = QuestRepository(db)
++            val expedition = ExpeditionRepository(db)
++            val quest = quests.createQuest(NewQuest(goal.id, title = "记录一个用户问题", reason = "验证需求", steps = listOf("记录原话"), instruction = "记录原话", estimatedMinutes = 5, completionCriteria = listOf("留下一条记录"), expectedOutput = "一条用户反馈", sourceIntention = "验证需求", sourceAvailableMinutes = 5, sourceEnergy = 3, sourceResources = listOf("PHONE")))
++            quests.startQuest(quest.id)
++            quests.completeQuest(quest.id, NewQuestResult("用户认为步骤太多", 5, null, null), artifact = NewQuestArtifact("用户反馈", "TEXT", "用户认为步骤太多"))
++            assertEquals(1, expedition.get(goal.id).completedActions)
++            assertEquals(1, expedition.get(goal.id).supplies)
++            assertEquals("用户认为步骤太多", expedition.observeArtifacts(goal.id).first().single().value)
++            assertThrows(IllegalStateException::class.java) {
++                runBlocking { quests.completeQuest(quest.id, NewQuestResult("重复提交", 5, null, null)) }
++            }
++            assertEquals(1, expedition.get(goal.id).supplies)
++            val second = quests.createQuest(NewQuest(goal.id, title = "再记录一个用户问题", reason = "继续验证", steps = listOf("记录原话"), instruction = "记录原话", estimatedMinutes = 5, completionCriteria = listOf("留下一条记录"), expectedOutput = "一条用户反馈", sourceIntention = "继续验证", sourceAvailableMinutes = 5, sourceEnergy = 3, sourceResources = listOf("PHONE")))
++            quests.startQuest(second.id)
++            quests.completeQuest(second.id, NewQuestResult("第二条", 5, null, null), artifact = NewQuestArtifact("第二条", "TEXT", "第二条"))
++            expedition.build(goal.id, CampBuilding.CAMPFIRE)
++            assertEquals(1, expedition.get(goal.id).campfireLevel)
++            assertEquals(0, expedition.get(goal.id).supplies)
++        } finally { db.close() }
++    }
++}
+diff --git a/app/src/androidTest/java/com/vika/quest/ui/home/Phase3GenerationTest.kt b/app/src/androidTest/java/com/vika/quest/ui/home/Phase3GenerationTest.kt
+index f92e771..e24f0bb 100644
+--- a/app/src/androidTest/java/com/vika/quest/ui/home/Phase3GenerationTest.kt
++++ b/app/src/androidTest/java/com/vika/quest/ui/home/Phase3GenerationTest.kt
+@@ -25,7 +25,7 @@ class Phase3GenerationTest {
+         val goals = GoalRepository(db.goalDao()); goals.createGoal("商业能力", "发现需求")
+         val quests = QuestRepository(db)
+         val builder = ContextBuilder(goals, ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao()))
+-        val vm = HomeViewModel(SavedStateHandle(), builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
++        val vm = HomeViewModel(SavedStateHandle(), builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()), ExpeditionRepository(db))
+         withTimeout(2_000) { vm.uiState.first { it.currentGoalId != null } }
+         vm.setIntention("研究 AI 产品如何获客"); vm.generateQuest(); vm.generateQuest(); vm.generateQuest()
+         withTimeout(2_000) { vm.uiState.first { it.generatedQuestId != null } }
+@@ -37,7 +37,7 @@ class Phase3GenerationTest {
+         val quests = QuestRepository(db)
+         val builder = ContextBuilder(goals, ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao()))
+         val handle = SavedStateHandle()
+-        val firstVm = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
++        val firstVm = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()), ExpeditionRepository(db))
+         firstVm.setIntention("研究 AI 产品如何获客")
+         firstVm.startClarification()
+         val firstQuestion = withTimeout(2_000) { firstVm.uiState.first { it.clarificationQuestion != null } }
+@@ -45,7 +45,7 @@ class Phase3GenerationTest {
+         firstVm.submitClarificationAnswer()
+         withTimeout(2_000) { firstVm.uiState.first { it.clarificationHistory.size == 1 && it.clarificationQuestion != null } }
+ 
+-        val restored = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
++        val restored = HomeViewModel(handle, builder, quests, FakeAiProvider(), AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()), ExpeditionRepository(db))
+         assertEquals(1, restored.uiState.value.clarificationHistory.size)
+         restored.setClarificationAnswer(restored.uiState.value.clarificationOptions.first())
+         restored.submitClarificationAnswer()
+@@ -58,7 +58,7 @@ class Phase3GenerationTest {
+         val quests = QuestRepository(db)
+         val builder = ContextBuilder(goals, ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao()))
+         val provider = AlwaysAskProvider()
+-        val vm = HomeViewModel(SavedStateHandle(), builder, quests, provider, AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()))
++        val vm = HomeViewModel(SavedStateHandle(), builder, quests, provider, AiQuestDraftValidator(), AiClarificationValidator(), goals, UserPreferenceRepository(db.userPreferenceDao()), ExpeditionRepository(db))
+         vm.setIntention("研究 AI 产品如何获客")
+         vm.startClarification(); vm.startClarification(); vm.startClarification()
+         repeat(3) { index ->
+diff --git a/app/src/androidTest/java/com/vika/quest/ui/quest/ActionReviewFlowTest.kt b/app/src/androidTest/java/com/vika/quest/ui/quest/ActionReviewFlowTest.kt
+index a9ee8c7..ae19a98 100644
+--- a/app/src/androidTest/java/com/vika/quest/ui/quest/ActionReviewFlowTest.kt
++++ b/app/src/androidTest/java/com/vika/quest/ui/quest/ActionReviewFlowTest.kt
+@@ -58,7 +58,7 @@ class ActionReviewFlowTest {
+         val memories = MemoryRepository(db.memoryDao())
+         val builder = ContextBuilder(goals, projects, memories, quests, UserPreferenceRepository(db.userPreferenceDao()))
+         val validator = AiQuestDraftValidator()
+-        return QuestDetailViewModel(id, goals, projects, memories, quests, builder, provider, validator, AiQuestResultValidator(), AiActionReviewValidator(validator), handle)
++        return QuestDetailViewModel(id, goals, projects, memories, quests, builder, provider, validator, AiQuestResultValidator(), AiActionReviewValidator(validator), handle, ArtifactStorage(InstrumentationRegistry.getInstrumentation().targetContext))
+     }
+ 
+     private class CountingProvider : AiProvider by FakeAiProvider() {
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 7dcf5d1..b6580ff 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -20,5 +20,14 @@
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+         </activity>
++        <provider
++            android:name="androidx.core.content.FileProvider"
++            android:authorities="${applicationId}.artifacts"
++            android:exported="false"
++            android:grantUriPermissions="true">
++            <meta-data
++                android:name="android.support.FILE_PROVIDER_PATHS"
++                android:resource="@xml/artifact_paths" />
++        </provider>
+     </application>
+ </manifest>
+diff --git a/app/src/main/java/com/vika/quest/data/local/QuestDatabase.kt b/app/src/main/java/com/vika/quest/data/local/QuestDatabase.kt
+index 0cf5dab..546f3a0 100644
+--- a/app/src/main/java/com/vika/quest/data/local/QuestDatabase.kt
++++ b/app/src/main/java/com/vika/quest/data/local/QuestDatabase.kt
+@@ -14,6 +14,8 @@ import com.vika.quest.data.local.dao.QuestDao
+ import com.vika.quest.data.local.dao.QuestRejectionDao
+ import com.vika.quest.data.local.dao.QuestResultDao
+ import com.vika.quest.data.local.dao.UserPreferenceDao
++import com.vika.quest.data.local.dao.ArtifactDao
++import com.vika.quest.data.local.dao.ExpeditionDao
+ import com.vika.quest.data.local.entity.GoalEntity
+ import com.vika.quest.data.local.entity.MemoryEntity
+ import com.vika.quest.data.local.entity.ProjectEntity
+@@ -21,10 +23,12 @@ import com.vika.quest.data.local.entity.QuestEntity
+ import com.vika.quest.data.local.entity.QuestRejectionEntity
+ import com.vika.quest.data.local.entity.QuestResultEntity
+ import com.vika.quest.data.local.entity.UserPreferenceEntity
++import com.vika.quest.data.local.entity.ArtifactEntity
++import com.vika.quest.data.local.entity.ExpeditionEntity
+ 
+ @Database(
+-    entities = [GoalEntity::class, ProjectEntity::class, MemoryEntity::class, QuestEntity::class, QuestResultEntity::class, QuestRejectionEntity::class, UserPreferenceEntity::class],
+-    version = 2,
++    entities = [GoalEntity::class, ProjectEntity::class, MemoryEntity::class, QuestEntity::class, QuestResultEntity::class, QuestRejectionEntity::class, UserPreferenceEntity::class, ExpeditionEntity::class, ArtifactEntity::class],
++    version = 3,
+     exportSchema = true,
+ )
+ @TypeConverters(RoomConverters::class)
+@@ -37,6 +41,8 @@ abstract class QuestDatabase : RoomDatabase() {
+     abstract fun questResultDao(): QuestResultDao
+     abstract fun questRejectionDao(): QuestRejectionDao
+     abstract fun userPreferenceDao(): UserPreferenceDao
++    abstract fun expeditionDao(): ExpeditionDao
++    abstract fun artifactDao(): ArtifactDao
+ 
+     companion object {
+         const val DATABASE_NAME = "quest.db"
+@@ -75,11 +81,22 @@ abstract class QuestDatabase : RoomDatabase() {
+             }
+         }
+ 
++        val MIGRATION_2_3 = object : Migration(2, 3) {
++            override fun migrate(db: SupportSQLiteDatabase) {
++                db.execSQL("""CREATE TABLE IF NOT EXISTS `expeditions` (`goalId` TEXT NOT NULL, `completedActions` INTEGER NOT NULL, `supplies` INTEGER NOT NULL, `campfireLevel` INTEGER NOT NULL, `shelterLevel` INTEGER NOT NULL, `lookoutLevel` INTEGER NOT NULL, PRIMARY KEY(`goalId`), FOREIGN KEY(`goalId`) REFERENCES `goals`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)""")
++                db.execSQL("""INSERT INTO `expeditions` (`goalId`,`completedActions`,`supplies`,`campfireLevel`,`shelterLevel`,`lookoutLevel`) SELECT `goalId`, COUNT(*), COUNT(*), 0, 0, 0 FROM `quests` WHERE `status` = 'COMPLETED' AND `goalId` IS NOT NULL GROUP BY `goalId`""")
++                db.execSQL("""CREATE TABLE IF NOT EXISTS `artifacts` (`id` TEXT NOT NULL, `questId` TEXT NOT NULL, `title` TEXT NOT NULL, `kind` TEXT NOT NULL, `value` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`questId`) REFERENCES `quests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)""")
++                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_artifacts_questId` ON `artifacts` (`questId`)")
++                db.execSQL("CREATE INDEX IF NOT EXISTS `index_artifacts_createdAt` ON `artifacts` (`createdAt`)")
++                db.execSQL("""INSERT INTO `artifacts` (`id`,`questId`,`title`,`kind`,`value`,`createdAt`) SELECT r.`id`,r.`questId`,q.`title`,'TEXT',r.`resultText`,r.`createdAt` FROM `quest_results` r JOIN `quests` q ON q.`id` = r.`questId` WHERE TRIM(r.`resultText`) != ''""")
++            }
++        }
++
+         fun create(context: Context): QuestDatabase =
+             Room.databaseBuilder(
+                 context.applicationContext,
+                 QuestDatabase::class.java,
+                 DATABASE_NAME,
+-            ).addMigrations(MIGRATION_1_2).build()
++            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+     }
+ }
+diff --git a/app/src/main/java/com/vika/quest/data/local/dao/ArtifactDao.kt b/app/src/main/java/com/vika/quest/data/local/dao/ArtifactDao.kt
+new file mode 100644
+index 0000000..5135663
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/data/local/dao/ArtifactDao.kt
+@@ -0,0 +1,18 @@
++package com.vika.quest.data.local.dao
++
++import androidx.room.Dao
++import androidx.room.Query
++import androidx.room.Upsert
++import com.vika.quest.data.local.entity.ArtifactEntity
++import kotlinx.coroutines.flow.Flow
++
++@Dao
++interface ArtifactDao {
++    @Query("SELECT artifacts.* FROM artifacts JOIN quests ON quests.id = artifacts.questId WHERE quests.goalId = :goalId ORDER BY artifacts.createdAt DESC")
++    fun observeForGoal(goalId: String): Flow<List<ArtifactEntity>>
++
++    @Query("SELECT * FROM artifacts WHERE questId = :questId LIMIT 1")
++    suspend fun getForQuest(questId: String): ArtifactEntity?
++
++    @Upsert suspend fun upsert(value: ArtifactEntity)
++}
+diff --git a/app/src/main/java/com/vika/quest/data/local/dao/ExpeditionDao.kt b/app/src/main/java/com/vika/quest/data/local/dao/ExpeditionDao.kt
+new file mode 100644
+index 0000000..1419343
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/data/local/dao/ExpeditionDao.kt
+@@ -0,0 +1,18 @@
++package com.vika.quest.data.local.dao
++
++import androidx.room.Dao
++import androidx.room.Query
++import androidx.room.Upsert
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import kotlinx.coroutines.flow.Flow
++
++@Dao
++interface ExpeditionDao {
++    @Query("SELECT * FROM expeditions WHERE goalId = :goalId LIMIT 1")
++    fun observe(goalId: String): Flow<ExpeditionEntity?>
++
++    @Query("SELECT * FROM expeditions WHERE goalId = :goalId LIMIT 1")
++    suspend fun get(goalId: String): ExpeditionEntity?
++
++    @Upsert suspend fun upsert(value: ExpeditionEntity)
++}
+diff --git a/app/src/main/java/com/vika/quest/data/local/entity/ArtifactEntity.kt b/app/src/main/java/com/vika/quest/data/local/entity/ArtifactEntity.kt
+new file mode 100644
+index 0000000..6dcc0a2
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/data/local/entity/ArtifactEntity.kt
+@@ -0,0 +1,20 @@
++package com.vika.quest.data.local.entity
++
++import androidx.room.Entity
++import androidx.room.ForeignKey
++import androidx.room.Index
++import androidx.room.PrimaryKey
++
++@Entity(
++    tableName = "artifacts",
++    foreignKeys = [ForeignKey(entity = QuestEntity::class, parentColumns = ["id"], childColumns = ["questId"], onDelete = ForeignKey.CASCADE)],
++    indices = [Index(value = ["questId"], unique = true), Index("createdAt")],
++)
++data class ArtifactEntity(
++    @PrimaryKey val id: String,
++    val questId: String,
++    val title: String,
++    val kind: String,
++    val value: String,
++    val createdAt: Long,
++)
+diff --git a/app/src/main/java/com/vika/quest/data/local/entity/ExpeditionEntity.kt b/app/src/main/java/com/vika/quest/data/local/entity/ExpeditionEntity.kt
+new file mode 100644
+index 0000000..81f961c
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/data/local/entity/ExpeditionEntity.kt
+@@ -0,0 +1,18 @@
++package com.vika.quest.data.local.entity
++
++import androidx.room.Entity
++import androidx.room.ForeignKey
++import androidx.room.PrimaryKey
++
++@Entity(
++    tableName = "expeditions",
++    foreignKeys = [ForeignKey(entity = GoalEntity::class, parentColumns = ["id"], childColumns = ["goalId"], onDelete = ForeignKey.CASCADE)],
++)
++data class ExpeditionEntity(
++    @PrimaryKey val goalId: String,
++    val completedActions: Int = 0,
++    val supplies: Int = 0,
++    val campfireLevel: Int = 0,
++    val shelterLevel: Int = 0,
++    val lookoutLevel: Int = 0,
++)
+diff --git a/app/src/main/java/com/vika/quest/data/repository/ArtifactStorage.kt b/app/src/main/java/com/vika/quest/data/repository/ArtifactStorage.kt
+new file mode 100644
+index 0000000..52a76f5
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/data/repository/ArtifactStorage.kt
+@@ -0,0 +1,67 @@
++package com.vika.quest.data.repository
++
++import android.content.Context
++import android.net.Uri
++import android.provider.OpenableColumns
++import androidx.core.content.FileProvider
++import java.io.File
++import java.util.UUID
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.withContext
++
++data class StoredArtifact(val name: String, val path: String)
++
++class ArtifactStorage(private val context: Context) {
++    fun rememberReadAccess(uri: Uri) {
++        context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
++    }
++
++    fun displayName(uri: Uri): String {
++        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
++            if (it.moveToFirst()) return it.getString(0)?.take(100)?.ifBlank { "成果文件" } ?: "成果文件"
++        }
++        return "成果文件"
++    }
++
++    suspend fun saveCopy(uri: Uri): StoredArtifact = withContext(Dispatchers.IO) {
++        val name = displayName(uri)
++        val safeName = name.replace(Regex("[^\\p{L}\\p{N}._-]"), "_").takeLast(80)
++        val folder = File(context.filesDir, "artifacts").apply { mkdirs() }
++        val file = File(folder, "${UUID.randomUUID()}_$safeName")
++        try {
++            val input = context.contentResolver.openInputStream(uri) ?: error("无法读取所选文件")
++            input.use { source ->
++                file.outputStream().use { target ->
++                    val bytes = ByteArray(8192)
++                    var total = 0L
++                    while (true) {
++                        val count = source.read(bytes)
++                        if (count < 0) break
++                        total += count
++                        require(total <= MAX_FILE_BYTES) { "成果文件不能超过 15 MB" }
++                        target.write(bytes, 0, count)
++                    }
++                }
++            }
++            StoredArtifact(name, file.absolutePath)
++        } catch (error: Exception) {
++            file.delete()
++            throw error
++        }
++    }
++
++    fun openUri(path: String): Uri {
++        val folder = File(context.filesDir, "artifacts").canonicalFile
++        val file = File(path).canonicalFile
++        require(file.parentFile == folder && file.isFile) { "成果文件已经无法打开" }
++        return FileProvider.getUriForFile(context, "${context.packageName}.artifacts", file)
++    }
++
++    fun deleteImported(path: String) {
++        val folder = File(context.filesDir, "artifacts").canonicalFile
++        val file = File(path).canonicalFile
++        if (file.parentFile == folder) file.delete()
++    }
++
++    companion object { private const val MAX_FILE_BYTES = 15L * 1024 * 1024 }
++}
+diff --git a/app/src/main/java/com/vika/quest/data/repository/ExpeditionRepository.kt b/app/src/main/java/com/vika/quest/data/repository/ExpeditionRepository.kt
+new file mode 100644
+index 0000000..98029f0
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/data/repository/ExpeditionRepository.kt
+@@ -0,0 +1,22 @@
++package com.vika.quest.data.repository
++
++import androidx.room.withTransaction
++import com.vika.quest.data.local.QuestDatabase
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import com.vika.quest.model.CampBuilding
++import com.vika.quest.model.ExpeditionRules
++
++class ExpeditionRepository(private val database: QuestDatabase) {
++    private val dao = database.expeditionDao()
++    fun observe(goalId: String) = dao.observe(goalId)
++    fun observeArtifacts(goalId: String) = database.artifactDao().observeForGoal(goalId)
++    suspend fun get(goalId: String): ExpeditionEntity = dao.get(goalId) ?: ExpeditionEntity(goalId)
++    suspend fun getArtifact(questId: String) = database.artifactDao().getForQuest(questId)
++
++    suspend fun build(goalId: String, building: CampBuilding) = database.withTransaction {
++        val existing = dao.get(goalId) ?: ExpeditionEntity(goalId)
++        val updated = ExpeditionRules.build(existing, building)
++        dao.upsert(updated)
++        updated
++    }
++}
+diff --git a/app/src/main/java/com/vika/quest/data/repository/QuestRepository.kt b/app/src/main/java/com/vika/quest/data/repository/QuestRepository.kt
+index 4d2c7bb..e07969d 100644
+--- a/app/src/main/java/com/vika/quest/data/repository/QuestRepository.kt
++++ b/app/src/main/java/com/vika/quest/data/repository/QuestRepository.kt
+@@ -7,6 +7,8 @@ import com.vika.quest.data.local.entity.MemoryEntity
+ import com.vika.quest.data.local.entity.QuestEntity
+ import com.vika.quest.data.local.entity.QuestRejectionEntity
+ import com.vika.quest.data.local.entity.QuestResultEntity
++import com.vika.quest.data.local.entity.ArtifactEntity
++import com.vika.quest.data.local.entity.ExpeditionEntity
+ import com.vika.quest.model.DifficultyRating
+ import com.vika.quest.model.NewQuest
+ import com.vika.quest.model.QuestStatus
+@@ -15,6 +17,7 @@ import java.util.UUID
+ import kotlinx.coroutines.flow.Flow
+ 
+ data class NewQuestResult(val resultText: String, val actualMinutes: Int?, val difficultyRating: DifficultyRating?, val usefulnessRating: Int?)
++data class NewQuestArtifact(val title: String, val kind: String, val value: String)
+ 
+ class QuestRepository(private val database: QuestDatabase) {
+     private val questDao = database.questDao()
+@@ -68,7 +71,7 @@ class QuestRepository(private val database: QuestDatabase) {
+         replacement.toEntity(now).also { questDao.upsert(it) }
+     }
+ 
+-    suspend fun completeQuest(id: String, input: NewQuestResult, now: Long = System.currentTimeMillis()): QuestResultEntity = database.withTransaction {
++    suspend fun completeQuest(id: String, input: NewQuestResult, now: Long = System.currentTimeMillis(), artifact: NewQuestArtifact? = null): QuestResultEntity = database.withTransaction {
+         val quest = checkNotNull(questDao.getById(id)) { "任务不存在" }
+         check(quest.status == QuestStatus.ACTIVE) { "只有进行中的任务可以完成" }
+         require(input.resultText.isNotBlank()) { "请填写你产出或发现了什么" }
+@@ -76,6 +79,15 @@ class QuestRepository(private val database: QuestDatabase) {
+         require(input.usefulnessRating == null || input.usefulnessRating in 1..5) { "有用程度必须在 1 到 5 之间" }
+         val result = QuestResultEntity(UUID.randomUUID().toString(), id, input.resultText.trim(), input.actualMinutes, input.difficultyRating, input.usefulnessRating, now, null, emptyList(), emptyList(), null, null)
+         resultDao.upsert(result)
++        if (artifact != null) {
++            require(artifact.title.isNotBlank() && artifact.value.isNotBlank()) { "成果内容不能为空" }
++            require(artifact.kind in setOf("TEXT", "LINK", "FILE")) { "不支持的成果类型" }
++            database.artifactDao().upsert(ArtifactEntity(UUID.randomUUID().toString(), id, artifact.title.trim(), artifact.kind, artifact.value.trim(), now))
++        }
++        quest.goalId?.let { goalId ->
++            val existing = database.expeditionDao().get(goalId) ?: ExpeditionEntity(goalId)
++            database.expeditionDao().upsert(existing.copy(completedActions = existing.completedActions + 1, supplies = existing.supplies + 1))
++        }
+         questDao.update(quest.copy(status = QuestStatus.COMPLETED, completedAt = now))
+         result
+     }
+diff --git a/app/src/main/java/com/vika/quest/di/AppContainer.kt b/app/src/main/java/com/vika/quest/di/AppContainer.kt
+index 5597db0..8f90c0b 100644
+--- a/app/src/main/java/com/vika/quest/di/AppContainer.kt
++++ b/app/src/main/java/com/vika/quest/di/AppContainer.kt
+@@ -19,12 +19,16 @@ import com.vika.quest.data.repository.QuestRepository
+ import com.vika.quest.data.repository.MemoryRepository
+ import com.vika.quest.data.repository.ProjectRepository
+ import com.vika.quest.data.repository.UserPreferenceRepository
++import com.vika.quest.data.repository.ExpeditionRepository
++import com.vika.quest.data.repository.ArtifactStorage
+ 
+ class AppContainer(context: Context) {
+     private val database = QuestDatabase.create(context)
+ 
+     val goalRepository = GoalRepository(database.goalDao())
+     val questRepository = QuestRepository(database)
++    val expeditionRepository = ExpeditionRepository(database)
++    val artifactStorage = ArtifactStorage(context)
+     val projectRepository = ProjectRepository(database.projectDao())
+     val memoryRepository = MemoryRepository(database.memoryDao())
+     val userPreferenceRepository = UserPreferenceRepository(database.userPreferenceDao())
+diff --git a/app/src/main/java/com/vika/quest/model/ExpeditionRules.kt b/app/src/main/java/com/vika/quest/model/ExpeditionRules.kt
+new file mode 100644
+index 0000000..3935709
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/model/ExpeditionRules.kt
+@@ -0,0 +1,35 @@
++package com.vika.quest.model
++
++import com.vika.quest.data.local.entity.ExpeditionEntity
++
++enum class CampBuilding(val label: String) {
++    CAMPFIRE("篝火"), SHELTER("小屋"), LOOKOUT("瞭望台")
++}
++
++object ExpeditionRules {
++    const val NODES_PER_CHAPTER = 10
++    const val MAX_BUILDING_LEVEL = 3
++
++    fun chapter(completedActions: Int): Int = completedActions / NODES_PER_CHAPTER + 1
++    fun exploredInChapter(completedActions: Int): Int = completedActions % NODES_PER_CHAPTER
++    fun cost(nextLevel: Int): Int = nextLevel + 1
++
++    fun level(state: ExpeditionEntity, building: CampBuilding): Int = when (building) {
++        CampBuilding.CAMPFIRE -> state.campfireLevel
++        CampBuilding.SHELTER -> state.shelterLevel
++        CampBuilding.LOOKOUT -> state.lookoutLevel
++    }
++
++    fun build(state: ExpeditionEntity, building: CampBuilding): ExpeditionEntity {
++        val current = level(state, building)
++        require(current < MAX_BUILDING_LEVEL) { "这座建筑已经建成" }
++        val price = cost(current + 1)
++        require(state.supplies >= price) { "物资不足，完成行动可获得物资" }
++        val spent = state.copy(supplies = state.supplies - price)
++        return when (building) {
++            CampBuilding.CAMPFIRE -> spent.copy(campfireLevel = current + 1)
++            CampBuilding.SHELTER -> spent.copy(shelterLevel = current + 1)
++            CampBuilding.LOOKOUT -> spent.copy(lookoutLevel = current + 1)
++        }
++    }
++}
+diff --git a/app/src/main/java/com/vika/quest/ui/AppViewModel.kt b/app/src/main/java/com/vika/quest/ui/AppViewModel.kt
+index 18af892..bfd93b4 100644
+--- a/app/src/main/java/com/vika/quest/ui/AppViewModel.kt
++++ b/app/src/main/java/com/vika/quest/ui/AppViewModel.kt
+@@ -38,7 +38,9 @@ object Routes {
+     const val SETTINGS = "settings"
+     const val PERSONA_SETUP = "persona_setup"
+     const val PERSONA_EDIT = "persona_edit"
++    const val EXPEDITION = "expedition/{goalId}"
+ 
+     fun quest(questId: String): String = "quest/$questId"
+     fun result(questId: String): String = "result/$questId"
++    fun expedition(goalId: String): String = "expedition/$goalId"
+ }
+diff --git a/app/src/main/java/com/vika/quest/ui/QuestApp.kt b/app/src/main/java/com/vika/quest/ui/QuestApp.kt
+index f696760..49d7b01 100644
+--- a/app/src/main/java/com/vika/quest/ui/QuestApp.kt
++++ b/app/src/main/java/com/vika/quest/ui/QuestApp.kt
+@@ -19,6 +19,7 @@ import com.vika.quest.ui.project.*
+ import com.vika.quest.ui.quest.*
+ import com.vika.quest.ui.result.*
+ import com.vika.quest.ui.settings.*
++import com.vika.quest.ui.expedition.*
+ 
+ @Composable fun QuestApp(container: AppContainer) {
+     val appVm: AppViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AppViewModel(container.goalRepository, container.userPreferenceRepository) } })
+@@ -39,7 +40,7 @@ import com.vika.quest.ui.settings.*
+             PersonaScreen(vm, isEditing = true, onComplete = { nav.popBackStack() }, onBack = { nav.popBackStack() })
+         }
+         composable(Routes.HOME) { entry ->
+-            val vm: HomeViewModel = viewModel(factory = remember(container) { ViewModelFactory { extras -> HomeViewModel(extras.createSavedStateHandle(), container.contextBuilder, container.questRepository, container.aiProvider, container.aiQuestDraftValidator, container.aiClarificationValidator, container.goalRepository, container.userPreferenceRepository) } })
++            val vm: HomeViewModel = viewModel(factory = remember(container) { ViewModelFactory { extras -> HomeViewModel(extras.createSavedStateHandle(), container.contextBuilder, container.questRepository, container.aiProvider, container.aiQuestDraftValidator, container.aiClarificationValidator, container.goalRepository, container.userPreferenceRepository, container.expeditionRepository) } })
+             val transfer by entry.savedStateHandle.getStateFlow("conditions_nonce", 0L).collectAsStateWithLifecycle()
+             LaunchedEffect(transfer) { if (transfer > 0) vm.applyConditions(entry.savedStateHandle[HomeViewModel.INTENTION] ?: "", entry.savedStateHandle[HomeViewModel.MINUTES] ?: 15, entry.savedStateHandle[HomeViewModel.ENERGY] ?: 3, entry.savedStateHandle.get<ArrayList<String>>(HomeViewModel.RESOURCES).orEmpty()) }
+             HomeScreen(
+@@ -48,16 +49,22 @@ import com.vika.quest.ui.settings.*
+                 onProjects = { nav.navigate(Routes.PROJECTS) },
+                 onPersona = { nav.navigate(Routes.PERSONA_EDIT) },
+                 onSettings = { nav.navigate(Routes.SETTINGS) },
++                onExpedition = { nav.navigate(Routes.expedition(it)) },
+             )
+         }
+         composable(Routes.QUEST, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
+             val id = checkNotNull(entry.arguments?.getString("questId"))
+-            val vm: QuestDetailViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { extras -> QuestDetailViewModel(id, container.goalRepository, container.projectRepository, container.memoryRepository, container.questRepository, container.contextBuilder, container.aiProvider, container.aiQuestDraftValidator, container.aiQuestResultValidator, container.aiActionReviewValidator, extras.createSavedStateHandle()) } })
++            val vm: QuestDetailViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { extras -> QuestDetailViewModel(id, container.goalRepository, container.projectRepository, container.memoryRepository, container.questRepository, container.contextBuilder, container.aiProvider, container.aiQuestDraftValidator, container.aiQuestResultValidator, container.aiActionReviewValidator, extras.createSavedStateHandle(), container.artifactStorage) } })
+             QuestDetailScreen(vm, onBack = { nav.popBackStack() }, onAdjusted = { intention, minutes, energy, resources -> transferToHome(nav, intention, minutes, energy, resources) }, onReplaced = { newId -> nav.popBackStack(); nav.navigate(Routes.quest(newId)) }, onResult = { nav.navigate(Routes.result(it)) }, onAbandoned = { nav.popBackStack() })
+         }
+         composable(Routes.RESULT, arguments = listOf(navArgument("questId") { type = NavType.StringType })) { entry ->
+             val id = checkNotNull(entry.arguments?.getString("questId")); val vm: ResultViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> ResultViewModel(id, container.questRepository) } })
+-            ResultScreen(vm, onDone = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true } }, onContinue = { next -> transferToHome(nav, next, 15, 3, listOf("PHONE")) })
++            ResultScreen(vm, onDone = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME); launchSingleTop = true } }, onContinue = { next -> transferToHome(nav, next, 15, 3, listOf("PHONE")) }, onExpedition = { goalId -> nav.navigate(Routes.expedition(goalId)) })
++        }
++        composable(Routes.EXPEDITION, arguments = listOf(navArgument("goalId") { type = NavType.StringType })) { entry ->
++            val id = checkNotNull(entry.arguments?.getString("goalId"))
++            val vm: ExpeditionViewModel = viewModel(factory = remember(container, id) { ViewModelFactory { _ -> ExpeditionViewModel(id, container.goalRepository, container.expeditionRepository) } })
++            ExpeditionScreen(vm, container.artifactStorage) { nav.popBackStack() }
+         }
+         composable(Routes.PROJECTS) { val vm: ProjectViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> ProjectViewModel(container.projectRepository) } }); ProjectScreen(vm) { nav.popBackStack() } }
+         composable(Routes.SETTINGS) { val vm: AiSettingsViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AiSettingsViewModel(container.aiSettingsStore, container.aiProvider) } }); AiSettingsScreen(vm) { nav.popBackStack() } }
+diff --git a/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionScreen.kt b/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionScreen.kt
+new file mode 100644
+index 0000000..2259109
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionScreen.kt
+@@ -0,0 +1,138 @@
++package com.vika.quest.ui.expedition
++
++import android.content.Intent
++import android.net.Uri
++import androidx.compose.foundation.Canvas
++import androidx.compose.foundation.layout.*
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.geometry.Offset
++import androidx.compose.ui.graphics.Path
++import androidx.compose.ui.graphics.PathEffect
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.unit.dp
++import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import com.vika.quest.data.repository.ArtifactStorage
++import com.vika.quest.model.CampBuilding
++import com.vika.quest.model.ExpeditionRules
++
++@OptIn(ExperimentalMaterial3Api::class)
++@Composable
++fun ExpeditionScreen(vm: ExpeditionViewModel, storage: ArtifactStorage, onBack: () -> Unit) {
++    val state by vm.state.collectAsStateWithLifecycle()
++    val context = LocalContext.current
++    var openError by remember { mutableStateOf<String?>(null) }
++    Scaffold(
++        contentWindowInsets = WindowInsets.safeDrawing,
++        topBar = { TopAppBar(title = { Text("我的旅程") }, navigationIcon = { TextButton(onClick = onBack) { Text("返回") } }) },
++    ) { padding ->
++        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp)) {
++            if (state.loading) { CircularProgressIndicator(); return@Column }
++            val progress = state.expedition ?: return@Column
++            Text(state.goalName, style = MaterialTheme.typography.headlineSmall)
++            Spacer(Modifier.height(8.dp))
++            Text("第 ${ExpeditionRules.chapter(progress.completedActions)} 章 · 累计走出 ${progress.completedActions} 步", color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Spacer(Modifier.height(16.dp))
++            ExpeditionMap(progress.completedActions)
++            Spacer(Modifier.height(12.dp))
++            Text("下一格由下一次真实行动开启。离开一段时间后，已经走过的路仍在这里。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Spacer(Modifier.height(28.dp))
++            Text("我的营地", style = MaterialTheme.typography.titleLarge)
++            Text("物资 ${progress.supplies} · 完成一个行动获得 1 份", color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Spacer(Modifier.height(12.dp))
++            CampScene(progress)
++            CampBuilding.entries.forEach { building ->
++                val level = ExpeditionRules.level(progress, building)
++                val price = ExpeditionRules.cost(level + 1)
++                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
++                    Column { Text(building.label, style = MaterialTheme.typography.titleMedium); Text("$level / ${ExpeditionRules.MAX_BUILDING_LEVEL} 级", style = MaterialTheme.typography.bodySmall) }
++                    OutlinedButton(onClick = { vm.build(building) }, enabled = !state.building && level < ExpeditionRules.MAX_BUILDING_LEVEL && progress.supplies >= price) {
++                        Text(if (level == ExpeditionRules.MAX_BUILDING_LEVEL) "已建成" else "建设 · $price 物资")
++                    }
++                }
++            }
++            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
++            Spacer(Modifier.height(30.dp))
++            Text("成果陈列", style = MaterialTheme.typography.titleLarge)
++            Spacer(Modifier.height(8.dp))
++            if (state.artifacts.isEmpty()) Text("走出第一步后，成果会留在这里。", color = MaterialTheme.colorScheme.onSurfaceVariant)
++            state.artifacts.forEach { artifact ->
++                HorizontalDivider(Modifier.padding(vertical = 12.dp))
++                Text(artifact.title, style = MaterialTheme.typography.titleMedium)
++                when (artifact.kind) {
++                    "TEXT" -> Text(artifact.value, style = MaterialTheme.typography.bodyMedium)
++                    "LINK", "FILE" -> TextButton(onClick = {
++                        try {
++                            val uri = if (artifact.kind == "FILE") storage.openUri(artifact.value) else Uri.parse(artifact.value)
++                            val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++                            context.startActivity(intent)
++                            openError = null
++                        } catch (error: Exception) { openError = "无法打开成果，请确认文件或链接仍可用。" }
++                    }) { Text(if (artifact.kind == "FILE") "打开保存的文件" else "打开成果链接") }
++                }
++            }
++            openError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
++            Spacer(Modifier.height(24.dp))
++        }
++    }
++}
++
++@Composable
++private fun ExpeditionMap(completedActions: Int) {
++    val revealed = ExpeditionRules.exploredInChapter(completedActions)
++    val active = MaterialTheme.colorScheme.primary
++    val unexplored = MaterialTheme.colorScheme.outlineVariant
++    val highlight = MaterialTheme.colorScheme.tertiary
++    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.large) {
++        Canvas(Modifier.fillMaxWidth().height(220.dp).padding(18.dp)) {
++            val nodes = (0..9).map { index ->
++                val column = if (index < 5) index else 9 - index
++                Offset(size.width * (0.08f + column * 0.21f), size.height * if (index < 5) 0.28f else 0.72f)
++            }
++            nodes.zipWithNext().forEachIndexed { index, (from, to) ->
++                drawLine(if (index < revealed) active else unexplored, from, to, strokeWidth = 6.dp.toPx(), pathEffect = if (index < revealed) null else PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
++            }
++            nodes.forEachIndexed { index, point ->
++                drawCircle(if (index < revealed) active else unexplored, radius = 12.dp.toPx(), center = point)
++                if (index == revealed) drawCircle(highlight, radius = 7.dp.toPx(), center = point)
++            }
++        }
++    }
++}
++
++@Composable
++private fun CampScene(progress: ExpeditionEntity) {
++    val line = MaterialTheme.colorScheme.primary
++    val ground = MaterialTheme.colorScheme.secondary
++    val glow = MaterialTheme.colorScheme.tertiary
++    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
++        Canvas(Modifier.fillMaxWidth().height(140.dp).padding(18.dp)) {
++            val y = size.height * 0.77f
++            drawLine(ground, Offset(0f, y), Offset(size.width, y), strokeWidth = 4.dp.toPx())
++            if (progress.campfireLevel > 0) {
++                val x = size.width * 0.2f
++                drawCircle(glow.copy(alpha = .23f), radius = (19 + progress.campfireLevel * 5).dp.toPx(), center = Offset(x, y - 17.dp.toPx()))
++                drawCircle(glow, radius = (8 + progress.campfireLevel * 2).dp.toPx(), center = Offset(x, y - 12.dp.toPx()))
++            }
++            if (progress.shelterLevel > 0) {
++                val x = size.width * 0.53f
++                val top = y - (33 + progress.shelterLevel * 7).dp.toPx()
++                drawRect(line.copy(alpha = .45f), Offset(x - 28.dp.toPx(), top + 18.dp.toPx()), androidx.compose.ui.geometry.Size(56.dp.toPx(), y - top - 18.dp.toPx()))
++                val roof = Path().apply { moveTo(x - 35.dp.toPx(), top + 20.dp.toPx()); lineTo(x, top); lineTo(x + 35.dp.toPx(), top + 20.dp.toPx()); close() }
++                drawPath(roof, line)
++            }
++            if (progress.lookoutLevel > 0) {
++                val x = size.width * 0.83f
++                val top = y - (39 + progress.lookoutLevel * 10).dp.toPx()
++                drawLine(line, Offset(x - 12.dp.toPx(), y), Offset(x - 12.dp.toPx(), top), 4.dp.toPx())
++                drawLine(line, Offset(x + 12.dp.toPx(), y), Offset(x + 12.dp.toPx(), top), 4.dp.toPx())
++                drawLine(line, Offset(x - 22.dp.toPx(), top), Offset(x + 22.dp.toPx(), top), 5.dp.toPx())
++                drawCircle(glow, 5.dp.toPx(), Offset(x, top - 9.dp.toPx()))
++            }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionViewModel.kt b/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionViewModel.kt
+new file mode 100644
+index 0000000..3e481ec
+--- /dev/null
++++ b/app/src/main/java/com/vika/quest/ui/expedition/ExpeditionViewModel.kt
+@@ -0,0 +1,56 @@
++package com.vika.quest.ui.expedition
++
++import androidx.lifecycle.ViewModel
++import androidx.lifecycle.viewModelScope
++import com.vika.quest.data.local.entity.ArtifactEntity
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import com.vika.quest.data.repository.ExpeditionRepository
++import com.vika.quest.data.repository.GoalRepository
++import com.vika.quest.model.CampBuilding
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.flow.combine
++import kotlinx.coroutines.flow.collect
++import kotlinx.coroutines.flow.update
++import kotlinx.coroutines.launch
++
++data class ExpeditionUiState(
++    val goalName: String = "",
++    val expedition: ExpeditionEntity? = null,
++    val artifacts: List<ArtifactEntity> = emptyList(),
++    val loading: Boolean = true,
++    val building: Boolean = false,
++    val error: String? = null,
++)
++
++class ExpeditionViewModel(
++    private val goalId: String,
++    goals: GoalRepository,
++    private val expeditions: ExpeditionRepository,
++) : ViewModel() {
++    private val _state = MutableStateFlow(ExpeditionUiState())
++    val state = _state.asStateFlow()
++
++    init {
++        viewModelScope.launch {
++            combine(goals.observeGoals(), expeditions.observe(goalId), expeditions.observeArtifacts(goalId)) { allGoals, progress, artifacts ->
++                Triple(allGoals.firstOrNull { it.id == goalId }?.name.orEmpty(), progress ?: ExpeditionEntity(goalId), artifacts)
++            }.collect { (name, progress, artifacts) ->
++                _state.update { it.copy(goalName = name, expedition = progress, artifacts = artifacts, loading = false) }
++            }
++        }
++    }
++
++    fun build(building: CampBuilding) {
++        if (_state.value.building) return
++        _state.update { it.copy(building = true, error = null) }
++        viewModelScope.launch {
++            try {
++                expeditions.build(goalId, building)
++                _state.update { it.copy(building = false) }
++            } catch (error: CancellationException) { throw error }
++            catch (error: Exception) { _state.update { it.copy(building = false, error = error.message ?: "建造失败") } }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt b/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
+index 65e8e6a..237c992 100644
+--- a/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
++++ b/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
+@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
+ import com.vika.quest.ai.QuestResource
+ import com.vika.quest.model.DirectionChoice
++import com.vika.quest.model.ExpeditionRules
+ import kotlin.math.roundToInt
+ 
+ @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@@ -20,6 +21,7 @@ fun HomeScreen(
+     onProjects: () -> Unit,
+     onPersona: () -> Unit,
+     onSettings: () -> Unit,
++    onExpedition: (String) -> Unit,
+ ) {
+     val state by viewModel.uiState.collectAsStateWithLifecycle()
+     var directionDialog by remember { mutableStateOf(false) }
+@@ -52,6 +54,21 @@ fun HomeScreen(
+             TextButton(onClick = { directionDialog = true }, enabled = !state.isBusy && !state.isSavingDirection) {
+                 Text(if (direction == null) "选择方向" else "更换方向")
+             }
++            state.currentGoalId?.let { goalId ->
++                val completed = state.expedition?.completedActions ?: 0
++                val supplies = state.expedition?.supplies ?: 0
++                Spacer(Modifier.height(8.dp))
++                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
++                    Column(Modifier.padding(18.dp)) {
++                        Text("第 ${ExpeditionRules.chapter(completed)} 章 · 已探索 $completed 步", style = MaterialTheme.typography.titleMedium)
++                        Spacer(Modifier.height(10.dp))
++                        LinearProgressIndicator(progress = { ExpeditionRules.exploredInChapter(completed) / 10f }, modifier = Modifier.fillMaxWidth())
++                        Spacer(Modifier.height(8.dp))
++                        Text("营地物资 $supplies · 每完成一步，路线就向前一格", style = MaterialTheme.typography.bodySmall)
++                        TextButton(onClick = { onExpedition(goalId) }) { Text("看看我的旅程与成果") }
++                    }
++                }
++            }
+             state.recentProgress?.let {
+                 Spacer(Modifier.height(8.dp))
+                 Text("上次留下：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+diff --git a/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt b/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
+index 264d6e1..1a9df5c 100644
+--- a/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
++++ b/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
+@@ -15,6 +15,8 @@ import com.vika.quest.data.repository.GoalRepository
+ import com.vika.quest.data.repository.UserPreferenceRepository
+ import com.vika.quest.data.repository.UserPreferenceKeys
+ import com.vika.quest.data.local.entity.GoalEntity
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import com.vika.quest.data.repository.ExpeditionRepository
+ import com.vika.quest.model.DirectionChoice
+ import com.vika.quest.model.QuestStatus
+ import kotlinx.coroutines.CancellationException
+@@ -24,6 +26,9 @@ import kotlinx.coroutines.flow.asStateFlow
+ import kotlinx.coroutines.flow.update
+ import kotlinx.coroutines.flow.combine
+ import kotlinx.coroutines.flow.collectLatest
++import kotlinx.coroutines.flow.collect
++import kotlinx.coroutines.flow.map
++import kotlinx.coroutines.flow.distinctUntilChanged
+ import kotlinx.coroutines.launch
+ 
+ data class HomeUiState(
+@@ -44,6 +49,7 @@ data class HomeUiState(
+     val goals: List<GoalEntity> = emptyList(),
+     val currentGoalId: String? = null,
+     val recentProgress: String? = null,
++    val expedition: ExpeditionEntity? = null,
+     val isSavingDirection: Boolean = false,
+ ) {
+     val isBusy: Boolean get() = isGenerating || isClarifying
+@@ -60,6 +66,7 @@ class HomeViewModel(
+     private val clarificationValidator: AiClarificationValidator,
+     private val goals: GoalRepository,
+     private val preferences: UserPreferenceRepository,
++    private val expeditionRepository: ExpeditionRepository,
+ ) : ViewModel() {
+     private val restoredHistory = restoreHistory()
+     private val _uiState = MutableStateFlow(
+@@ -80,6 +87,14 @@ class HomeViewModel(
+     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+ 
+     init {
++        viewModelScope.launch {
++            _uiState.map { it.currentGoalId }.distinctUntilChanged().collectLatest { id ->
++                if (id == null) _uiState.update { it.copy(expedition = null) }
++                else expeditionRepository.observe(id).collect { expedition ->
++                    _uiState.update { it.copy(expedition = expedition) }
++                }
++            }
++        }
+         viewModelScope.launch {
+             combine(goals.observeGoals(), questRepository.observeRecentQuests(8)) { allGoals, recent -> allGoals to recent }
+                 .collectLatest { (allGoals, recent) ->
+diff --git a/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt b/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt
+index 646f073..65c9951 100644
+--- a/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt
++++ b/app/src/main/java/com/vika/quest/ui/quest/QuestDetailScreen.kt
+@@ -8,6 +8,8 @@ import androidx.compose.runtime.*
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
+ import com.vika.quest.model.DifficultyRating
+ import com.vika.quest.model.QuestStatus
+ import com.vika.quest.model.RejectionReason
+@@ -18,6 +20,9 @@ fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdj
+     val state by viewModel.uiState.collectAsStateWithLifecycle()
+     var rejectionDialog by remember { mutableStateOf(false) }
+     var abandonmentDialog by remember { mutableStateOf(false) }
++    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        if (uri != null) viewModel.selectArtifact(uri)
++    }
+     LaunchedEffect(state.newQuestId) { state.newQuestId?.let(onReplaced) }
+     LaunchedEffect(state.resultReady) { if (state.resultReady) onResult(checkNotNull(state.quest).id) }
+     LaunchedEffect(state.abandoned) { if (state.abandoned) onAbandoned() }
+@@ -44,7 +49,7 @@ fun QuestDetailScreen(viewModel: QuestDetailViewModel, onBack: () -> Unit, onAdj
+                 Text("行动进行中", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                 Spacer(Modifier.height(12.dp)); Button(onClick = viewModel::showCompletion, modifier = Modifier.fillMaxWidth()) { Text("完成行动") }
+                 TextButton(onClick = { abandonmentDialog = true }, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth()) { Text("这一步做不了") }
+-                if (state.showCompletion) CompletionForm(state, viewModel)
++                if (state.showCompletion) CompletionForm(state, viewModel) { filePicker.launch(arrayOf("*/*")) }
+             }
+             QuestStatus.COMPLETED -> Button(onClick = { onResult(quest.id) }, modifier = Modifier.fillMaxWidth()) { Text("查看结果") }
+             QuestStatus.ABANDONED -> Text("这项行动已结束", color = MaterialTheme.colorScheme.onSurfaceVariant)
+@@ -106,8 +111,13 @@ private fun ActionReviewDialog(state: QuestDetailUiState, vm: QuestDetailViewMod
+ 
+ @Composable private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) { Spacer(Modifier.height(24.dp)); HorizontalDivider(); Spacer(Modifier.height(20.dp)); Text(title, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(8.dp)); Column(content = content) }
+ 
+-@Composable private fun CompletionForm(state: QuestDetailUiState, vm: QuestDetailViewModel) {
+-    Spacer(Modifier.height(20.dp)); OutlinedTextField(value = state.resultText, onValueChange = vm::setResultText, label = { Text("你产出或发现了什么？*") }, modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp))
++@Composable private fun CompletionForm(state: QuestDetailUiState, vm: QuestDetailViewModel, onPickFile: () -> Unit) {
++    Spacer(Modifier.height(20.dp)); Text("保存这次的成果", style = MaterialTheme.typography.titleMedium)
++    Spacer(Modifier.height(8.dp)); OutlinedTextField(value = state.resultText, onValueChange = vm::setResultText, label = { Text("写下一条成果（可选）") }, modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp))
++    Spacer(Modifier.height(10.dp)); OutlinedTextField(value = state.artifactUrl, onValueChange = vm::setArtifactUrl, label = { Text("成果链接（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
++    TextButton(onClick = onPickFile) { Text(if (state.fileName == null) "选择成果文件" else "更换成果文件") }
++    state.fileName?.let { Text(it, color = MaterialTheme.colorScheme.primary); TextButton(onClick = vm::clearArtifact) { Text("移除文件") } }
++    Text("文字、链接、文件至少留下一项。选择文件时保存一份本地副本，最多 15 MB。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+     Spacer(Modifier.height(10.dp)); OutlinedTextField(value = state.actualMinutes, onValueChange = vm::setActualMinutes, label = { Text("实际用时（可选）") }, modifier = Modifier.fillMaxWidth())
+     Spacer(Modifier.height(12.dp)); Text("难度（可选）"); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(DifficultyRating.TOO_EASY to "太简单", DifficultyRating.APPROPRIATE to "合适", DifficultyRating.TOO_HARD to "太难").forEach { (value,label) -> FilterChip(selected = state.difficultyRating == value, onClick = { vm.setDifficulty(value) }, label = { Text(label) }) } }
+     Text("有用程度（可选）"); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { (1..5).forEach { value -> FilterChip(selected = state.usefulnessRating == value, onClick = { vm.setUsefulness(value) }, label = { Text(value.toString()) }) } }
+diff --git a/app/src/main/java/com/vika/quest/ui/quest/QuestDetailViewModel.kt b/app/src/main/java/com/vika/quest/ui/quest/QuestDetailViewModel.kt
+index d6ed877..d6a95ad 100644
+--- a/app/src/main/java/com/vika/quest/ui/quest/QuestDetailViewModel.kt
++++ b/app/src/main/java/com/vika/quest/ui/quest/QuestDetailViewModel.kt
+@@ -3,6 +3,7 @@ package com.vika.quest.ui.quest
+ import androidx.lifecycle.ViewModel
+ import androidx.lifecycle.SavedStateHandle
+ import androidx.lifecycle.viewModelScope
++import android.net.Uri
+ import com.vika.quest.ai.*
+ import com.vika.quest.data.local.entity.MemoryEntity
+ import com.vika.quest.data.local.entity.QuestEntity
+@@ -19,6 +20,7 @@ data class QuestDetailUiState(
+     val isLoading: Boolean = true, val quest: QuestEntity? = null, val goalName: String = "",
+     val isWorking: Boolean = false, val newQuestId: String? = null, val abandoned: Boolean = false,
+     val showCompletion: Boolean = false, val resultText: String = "", val actualMinutes: String = "",
++    val artifactUrl: String = "", val fileUri: String? = null, val fileName: String? = null,
+     val difficultyRating: DifficultyRating? = null, val usefulnessRating: Int? = null,
+     val resultReady: Boolean = false, val errorMessage: String? = null,
+     val reviewOpen: Boolean = false, val reviewQuestion: String = "", val reviewReply: AiActionReviewReply? = null,
+@@ -37,6 +39,7 @@ class QuestDetailViewModel(
+     private val resultValidator: AiQuestResultValidator,
+     private val reviewValidator: AiActionReviewValidator,
+     private val savedState: SavedStateHandle,
++    private val artifactStorage: ArtifactStorage,
+ ) : ViewModel() {
+     private val _uiState = MutableStateFlow(QuestDetailUiState(
+         reviewOpen = savedState[REVIEW_OPEN] ?: false,
+@@ -44,6 +47,8 @@ class QuestDetailViewModel(
+         reviewHistory = savedState.get<ArrayList<String>>(REVIEW_HISTORY_QUESTIONS).orEmpty()
+             .zip(savedState.get<ArrayList<String>>(REVIEW_HISTORY_ANSWERS).orEmpty()) { question, answer -> ActionReviewExchange(question, answer) }.takeLast(MAX_REVIEW_QUESTIONS),
+         reviewReply = savedState.get<String>(REVIEW_REPLY)?.let { runCatching { AiJsonCodec.parseActionReview(it) }.getOrNull() },
++        fileUri = savedState[ARTIFACT_URI],
++        fileName = savedState[ARTIFACT_NAME],
+     ))
+     val uiState = _uiState.asStateFlow()
+ 
+@@ -53,6 +58,23 @@ class QuestDetailViewModel(
+     fun abandonQuest(reason: RejectionReason, details: String?) = work { quests.abandonQuest(questId, reason, details); _uiState.update { it.copy(abandoned = true) } }
+     fun showCompletion() = _uiState.update { it.copy(showCompletion = true, errorMessage = null) }
+     fun setResultText(value: String) = _uiState.update { it.copy(resultText = value) }
++    fun setArtifactUrl(value: String) = _uiState.update { it.copy(artifactUrl = value, errorMessage = null) }
++    fun selectArtifact(uri: Uri) {
++        try {
++            artifactStorage.rememberReadAccess(uri)
++            val name = artifactStorage.displayName(uri)
++            savedState[ARTIFACT_URI] = uri.toString()
++            savedState[ARTIFACT_NAME] = name
++            _uiState.update { it.copy(fileUri = uri.toString(), fileName = name, errorMessage = null) }
++        } catch (error: Exception) {
++            _uiState.update { it.copy(errorMessage = "无法读取这个文件，请重新选择。") }
++        }
++    }
++    fun clearArtifact() {
++        savedState.remove<String>(ARTIFACT_URI)
++        savedState.remove<String>(ARTIFACT_NAME)
++        _uiState.update { it.copy(fileUri = null, fileName = null) }
++    }
+     fun setActualMinutes(value: String) = _uiState.update { it.copy(actualMinutes = value.filter(Char::isDigit)) }
+     fun setDifficulty(value: DifficultyRating) = _uiState.update { it.copy(difficultyRating = value) }
+     fun setUsefulness(value: Int) = _uiState.update { it.copy(usefulnessRating = value) }
+@@ -123,15 +145,35 @@ class QuestDetailViewModel(
+     fun submitResult() {
+         val state = _uiState.value; val quest = state.quest ?: return
+         if (state.isWorking) return
+-        if (state.resultText.isBlank()) { _uiState.update { it.copy(errorMessage = "请填写你产出或发现了什么。") }; return }
++        if (state.resultText.isBlank() && state.artifactUrl.isBlank() && state.fileUri == null) {
++            _uiState.update { it.copy(errorMessage = "写下一条成果、保存链接，或选择成果文件。") }; return
++        }
++        val url = state.artifactUrl.trim()
++        if (state.fileUri != null && url.isNotEmpty()) {
++            _uiState.update { it.copy(errorMessage = "文件和链接各保留一个即可，请先选一种成果。") }; return
++        }
++        if (state.fileUri == null && url.isNotEmpty() && !url.startsWith("https://", true) && !url.startsWith("http://", true)) {
++            _uiState.update { it.copy(errorMessage = "成果链接须以 https:// 或 http:// 开头。") }; return
++        }
+         val actual = state.actualMinutes.takeIf(String::isNotBlank)?.toIntOrNull()
+         if (state.actualMinutes.isNotBlank() && actual == null) { _uiState.update { it.copy(errorMessage = "实际用时格式不正确。") }; return }
+         _uiState.update { it.copy(isWorking = true, errorMessage = null) }
+         viewModelScope.launch {
++            var imported: StoredArtifact? = null
+             try {
+-                val result = quests.completeQuest(quest.id, NewQuestResult(state.resultText, actual, state.difficultyRating, state.usefulnessRating))
++                imported = state.fileUri?.let { artifactStorage.saveCopy(Uri.parse(it)) }
++                val stored = imported
++                val artifact = when {
++                    stored != null -> NewQuestArtifact(stored.name, "FILE", stored.path)
++                    url.isNotBlank() -> NewQuestArtifact(quest.title, "LINK", url)
++                    else -> NewQuestArtifact(quest.title, "TEXT", state.resultText.trim())
++                }
++                val summary = state.resultText.trim().ifBlank { if (stored != null) "保存了成果文件：${stored.name}" else "保存了成果链接：$url" }
++                val result = quests.completeQuest(quest.id, NewQuestResult(summary, actual, state.difficultyRating, state.usefulnessRating), artifact = artifact)
++                imported = null
+                 try {
+-                    val goal = quest.goalId?.let { goals.getGoal(it) }
++                    if (state.resultText.isNotBlank()) {
++                        val goal = quest.goalId?.let { goals.getGoal(it) }
+                     val project = quest.projectId?.let { projects.getProject(it) }
+                     val context = QuestResultAnalysisContext(
+                         goal = goal?.let { GoalSnapshot(it.id, it.name, it.description, it.priority) },
+@@ -144,13 +186,20 @@ class QuestDetailViewModel(
+                     )
+                     val analysis = resultValidator.validate(ai.analyzeQuestResult(context))
+                     val memoryEntities = analysis.memoriesToSave.map { MemoryEntity(UUID.randomUUID().toString(), quest.goalId, quest.projectId, it.type.trim(), it.content.trim(), it.importance, System.currentTimeMillis()) }
+-                    quests.saveAnalysis(quest.id, analysis, memoryEntities)
++                        quests.saveAnalysis(quest.id, analysis, memoryEntities)
++                    }
+                 } catch (analysisError: Exception) {
+                     _uiState.update { it.copy(errorMessage = "结果已保存，但 AI 分析暂时失败：${analysisError.message}") }
+                 }
+                 _uiState.update { it.copy(isWorking = false, resultReady = true) }
+-            } catch (error: CancellationException) { throw error }
+-            catch (error: Exception) { _uiState.update { it.copy(isWorking = false, errorMessage = error.message ?: "提交结果失败。") } }
++            } catch (error: CancellationException) {
++                imported?.let { artifactStorage.deleteImported(it.path) }
++                throw error
++            }
++            catch (error: Exception) {
++                imported?.let { artifactStorage.deleteImported(it.path) }
++                _uiState.update { it.copy(isWorking = false, errorMessage = error.message ?: "提交结果失败。") }
++            }
+         }
+     }
+ 
+@@ -167,5 +216,7 @@ class QuestDetailViewModel(
+         private const val REVIEW_REPLY = "review_reply"
+         private const val REVIEW_HISTORY_QUESTIONS = "review_history_questions"
+         private const val REVIEW_HISTORY_ANSWERS = "review_history_answers"
++        private const val ARTIFACT_URI = "artifact_uri"
++        private const val ARTIFACT_NAME = "artifact_name"
+     }
+ }
+diff --git a/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt b/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt
+index 6c9e91b..40c36a5 100644
+--- a/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt
++++ b/app/src/main/java/com/vika/quest/ui/result/ResultScreen.kt
+@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
+ 
+ @Composable
+-fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -> Unit) {
++fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -> Unit, onExpedition: (String) -> Unit) {
+     val state by vm.state.collectAsStateWithLifecycle()
+     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp)) {
+@@ -19,6 +19,10 @@ fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -
+             Text("这一步，做到了。", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+             Spacer(Modifier.height(12.dp))
+             Text("留下的结果会帮助 Quest 判断下一步。", color = MaterialTheme.colorScheme.onSurfaceVariant)
++            state.goalId?.let {
++                Spacer(Modifier.height(12.dp))
++                Text("路线前进一格 · 营地物资 +1", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
++            }
+             Spacer(Modifier.height(28.dp))
+             Text("完成了什么", style = MaterialTheme.typography.titleMedium)
+             Spacer(Modifier.height(8.dp))
+@@ -32,6 +36,7 @@ fun ResultScreen(vm: ResultViewModel, onDone: () -> Unit, onContinue: (String) -
+                 Spacer(Modifier.height(8.dp)); Text(it)
+             }
+             Spacer(Modifier.height(36.dp))
++            state.goalId?.let { goalId -> Button(onClick = { onExpedition(goalId) }, modifier = Modifier.fillMaxWidth()) { Text("看看这次推进了哪里") } }
+             Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("先到这里") }
+             OutlinedButton(onClick = { onContinue(result.suggestedNextStep.orEmpty()) }, modifier = Modifier.fillMaxWidth()) { Text("继续这个方向") }
+         }
+diff --git a/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt b/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt
+index 58a48f7..8d52268 100644
+--- a/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt
++++ b/app/src/main/java/com/vika/quest/ui/result/ResultViewModel.kt
+@@ -7,5 +7,16 @@ import com.vika.quest.data.repository.QuestRepository
+ import kotlinx.coroutines.flow.*
+ import kotlinx.coroutines.launch
+ 
+-data class ResultUiState(val result: QuestResultEntity? = null, val loading: Boolean = true)
+-class ResultViewModel(questId: String, repository: QuestRepository) : ViewModel() { private val _state = MutableStateFlow(ResultUiState()); val state = _state.asStateFlow(); init { viewModelScope.launch { repository.observeResult(questId).collect { _state.value = ResultUiState(it, false) } } } }
++data class ResultUiState(val result: QuestResultEntity? = null, val loading: Boolean = true, val goalId: String? = null)
++class ResultViewModel(questId: String, repository: QuestRepository) : ViewModel() {
++    private val _state = MutableStateFlow(ResultUiState())
++    val state = _state.asStateFlow()
++    init {
++        viewModelScope.launch {
++            repository.observeResult(questId).collect { result ->
++                val goalId = if (result == null) null else repository.getQuest(questId)?.goalId
++                _state.value = ResultUiState(result, false, goalId)
++            }
++        }
++    }
++}
+diff --git a/app/src/main/res/xml/artifact_paths.xml b/app/src/main/res/xml/artifact_paths.xml
+new file mode 100644
+index 0000000..de93500
+--- /dev/null
++++ b/app/src/main/res/xml/artifact_paths.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<paths xmlns:android="http://schemas.android.com/apk/res/android">
++    <files-path name="artifacts" path="artifacts/" />
++</paths>
+diff --git a/app/src/test/java/com/vika/quest/model/ExpeditionRulesTest.kt b/app/src/test/java/com/vika/quest/model/ExpeditionRulesTest.kt
+new file mode 100644
+index 0000000..b7063bc
+--- /dev/null
++++ b/app/src/test/java/com/vika/quest/model/ExpeditionRulesTest.kt
+@@ -0,0 +1,24 @@
++package com.vika.quest.model
++
++import com.vika.quest.data.local.entity.ExpeditionEntity
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class ExpeditionRulesTest {
++    @Test fun mapKeepsProgressAcrossChapters() {
++        assertEquals(1, ExpeditionRules.chapter(9))
++        assertEquals(2, ExpeditionRules.chapter(10))
++        assertEquals(0, ExpeditionRules.exploredInChapter(10))
++    }
++
++    @Test fun playerChoosesOneBuildingAndSpendsSupplies() {
++        val state = ExpeditionEntity("goal", completedActions = 4, supplies = 4)
++        val built = ExpeditionRules.build(state, CampBuilding.LOOKOUT)
++        assertEquals(2, built.supplies)
++        assertEquals(1, built.lookoutLevel)
++        assertEquals(0, built.shelterLevel)
++        assertEquals(4, built.completedActions)
++        assertThrows(IllegalArgumentException::class.java) { ExpeditionRules.build(built.copy(supplies = 0), CampBuilding.SHELTER) }
++    }
++}
