@@ -11,6 +11,7 @@ import com.vika.quest.ai.ContextBuilder
 import com.vika.quest.ai.DeepSeekAiProvider
 import com.vika.quest.ai.AiClarificationValidator
 import com.vika.quest.ai.AiMentorReplyValidator
+import com.vika.quest.ai.AiActionReviewValidator
 import com.vika.quest.ai.QuestPromptBuilder
 import com.vika.quest.data.local.QuestDatabase
 import com.vika.quest.data.repository.GoalRepository
@@ -28,6 +29,7 @@ class AppContainer(context: Context) {
     val memoryRepository = MemoryRepository(database.memoryDao())
     val userPreferenceRepository = UserPreferenceRepository(database.userPreferenceDao())
     val aiQuestDraftValidator = AiQuestDraftValidator()
+    val aiActionReviewValidator = AiActionReviewValidator(aiQuestDraftValidator)
     val aiClarificationValidator = AiClarificationValidator()
     val aiMentorReplyValidator = AiMentorReplyValidator()
     val aiQuestResultValidator = AiQuestResultValidator()
