@@ -132,12 +132,27 @@ object AiJsonCodec {
         }))
     }.toString()
 
-    fun chatRequest(model: String, system: String, user: String, maxTokens: Int = 1600) = JSONObject().apply {
+    fun chatRequest(model: String, system: String, user: String, maxTokens: Int = 1600, reasoningEffort: String? = null) = JSONObject().apply {
         put("model", model); put("stream", false); put("max_tokens", maxTokens); put("response_format", JSONObject().put("type", "json_object"))
+        reasoningEffort?.let { put("reasoning_effort", it) }
         put("messages", JSONArray().put(JSONObject().put("role", "system").put("content", system)).put(JSONObject().put("role", "user").put("content", user)))
     }.toString()
 
-    fun contentFromChatResponse(raw: String): String = JSONObject(raw).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+    data class ChatResponse(val content: String?, val finishReason: String?)
+
+    fun parseChatResponse(raw: String): ChatResponse {
+        val choice = JSONObject(raw).getJSONArray("choices").getJSONObject(0)
+        val message = choice.getJSONObject("message")
+        val content = message.get("content").let { value ->
+            require(value is String || value == JSONObject.NULL) { "content 必须为文本或 null" }
+            value as? String
+        }
+        val reason = choice.opt("finish_reason").let { value ->
+            require(value == null || value == JSONObject.NULL || value is String) { "finish_reason 必须为文本" }
+            value as? String
+        }
+        return ChatResponse(content, reason)
+    }
 
     private fun JSONArray.strings() = List(length()) { index ->
         get(index).let { value -> require(value is String) { "数组元素必须为文本" }; value }

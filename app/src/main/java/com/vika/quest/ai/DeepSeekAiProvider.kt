@@ -98,8 +98,22 @@ class DeepSeekAiProvider(
     }
 
     private suspend fun chat(settings: AiConnectionSettings, system: String, user: String, maxTokens: Int = 1600): String {
-        val body = request(settings, "/chat/completions", "POST", AiJsonCodec.chatRequest(settings.model, system, user, maxTokens))
-        return runCatching { AiJsonCodec.contentFromChatResponse(body) }.getOrElse { throw IOException("DeepSeek 响应缺少有效内容") }.also { if (it.isBlank()) throw IOException("DeepSeek 返回了空内容") }
+        suspend fun response(prompt: String, limit: Int, effort: String? = null): AiJsonCodec.ChatResponse {
+            val body = request(settings, "/chat/completions", "POST", AiJsonCodec.chatRequest(settings.model, system, prompt, limit, effort))
+            return runCatching { AiJsonCodec.parseChatResponse(body) }
+                .getOrElse { throw IOException("DeepSeek 响应格式异常，请重试") }
+        }
+        val first = response(user, maxTokens)
+        if (!first.content.isNullOrBlank()) return first.content
+        if (first.finishReason == "content_filter") throw IOException("DeepSeek 未能处理这次内容，请调整描述后重试")
+
+        // DeepSeek documents occasional empty content in JSON mode. One bounded retry
+        // disables thinking so the JSON answer has the full output budget.
+        val retryPrompt = user + "\n\n上次响应没有内容。请直接输出完整的 JSON 对象，不要输出分析过程或空白。"
+        val retry = response(retryPrompt, maxOf(maxTokens, 4_096), "none")
+        if (retry.finishReason == "content_filter") throw IOException("DeepSeek 未能处理这次内容，请调整描述后重试")
+        return retry.content?.takeIf(String::isNotBlank)
+            ?: throw IOException("DeepSeek 连续返回空内容，请重试或在 AI 设置中切换模型")
     }
 
     private suspend fun request(settings: AiConnectionSettings, path: String, method: String, body: String?): String = withContext(Dispatchers.IO) {
