@@ -110,6 +110,7 @@ class FakeAiProvider : AiProvider {
             )
             else -> AiQuestDraft(
                 if (last?.resultSummary == null) "为“$subject”核实一个当前阻碍" else "核对“${last?.resultSummary.orEmpty().take(14)}”的下一项假设",
+                reason, minOf(5, context.availableMinutes),
                 listOf("查看“${last?.resultSummary?.take(70) ?: subject}”的实际进展，指出阻止下一步的一项具体问题", "用当前可用设备记录一个可以立即检验的小动作，并执行它", "写下执行后的观察或新发现"),
                 listOf("记录中包含当前阻碍、已经执行的检验和实际观察"), "一条关于“$subject”的阻碍检验及观察记录。", goal?.id, project?.id,
             )
