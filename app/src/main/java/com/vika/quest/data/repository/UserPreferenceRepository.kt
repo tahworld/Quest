@@ -18,6 +18,7 @@ object UserPreferenceKeys {
     const val PERSONA_GUIDANCE = "persona_guidance_style"
     const val PERSONA_AVOID = "persona_advice_to_avoid"
     const val PERSONA_COMPLETE = "persona_setup_complete"
+    const val ACTIVE_DIRECTION_GOAL_ID = "active_direction_goal_id"
 
     val personaPromptKeys = listOf(PERSONA_IDENTITY, PERSONA_FOCUS, PERSONA_GUIDANCE, PERSONA_AVOID)
 }
