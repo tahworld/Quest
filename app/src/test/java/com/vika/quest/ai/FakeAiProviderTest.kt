@@ -42,6 +42,7 @@ class FakeAiProviderTest {
         val blocked = provider.reviewQuest(base.copy(question = "现在没时间，能改吗？"))
         assertNotNull(blocked.proposedQuest)
         AiActionReviewValidator(AiQuestDraftValidator()).validate(blocked, base.copy(question = "现在没时间，能改吗？"))
+        Unit
     }
 
     @Test fun fakeContinuesPreviousReadingResult() = runBlocking {
@@ -51,6 +52,7 @@ class FakeAiProviderTest {
         val draft = FakeAiProvider().generateQuest(base)
         assertTrue(draft.steps.any { it.contains("记下一个观点") })
         AiQuestDraftValidator().validate(draft, base)
+        Unit
     }
 
     @Test fun readingOnPhoneInFiveMinutesLeavesARealNote() = runBlocking {
@@ -60,6 +62,7 @@ class FakeAiProviderTest {
         assertEquals(5, draft.estimatedMinutes)
         assertTrue(draft.expectedOutput.contains("笔记"))
         AiQuestDraftValidator().validate(draft, context)
+        Unit
     }
 
     @Test fun physicalDirectionWithoutMovementDoesNotOrderExercise() = runBlocking {
@@ -68,6 +71,7 @@ class FakeAiProviderTest {
         val draft = FakeAiProvider().generateQuest(context)
         assertFalse(draft.steps.any { "步行" in it || "冲刺" in it })
         AiQuestDraftValidator().validate(draft, context)
+        Unit
     }
 
     private fun clarificationContext(history: List<ClarificationExchange>) = QuestClarificationContext(
