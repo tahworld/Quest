@@ -52,6 +52,16 @@ class UserPersonaPersistenceTest {
         assertEquals(Routes.HOME, route(goals, preferences))
     }
 
+    @Test fun selectedDirectionPersistsWithoutChangingPreviousGoals() = runBlocking {
+        val goals = GoalRepository(db.goalDao())
+        val previous = goals.createGoal("旧目标", "原有内容")
+        val current = goals.createGoal("读手头教材", "阅读/学习：读手头教材")
+        val preferences = UserPreferenceRepository(db.userPreferenceDao())
+        preferences.save(UserPreferenceKeys.ACTIVE_DIRECTION_GOAL_ID, current.id)
+        assertEquals(current.id, UserPreferenceRepository(db.userPreferenceDao()).get(UserPreferenceKeys.ACTIVE_DIRECTION_GOAL_ID))
+        assertEquals("原有内容", goals.getGoal(previous.id)?.description)
+    }
+
     private suspend fun route(goals: GoalRepository, preferences: UserPreferenceRepository): String =
         withTimeout(2_000) { AppViewModel(goals, preferences).startRoute.first { it != null }!! }
 }
