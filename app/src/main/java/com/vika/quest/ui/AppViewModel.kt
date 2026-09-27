@@ -38,7 +38,6 @@ object Routes {
     const val SETTINGS = "settings"
     const val PERSONA_SETUP = "persona_setup"
     const val PERSONA_EDIT = "persona_edit"
-    const val MENTOR = "mentor"
 
     fun quest(questId: String): String = "quest/$questId"
     fun result(questId: String): String = "result/$questId"
