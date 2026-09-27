@@ -16,6 +16,21 @@ class DeepSeekAiProvider(
     private val resultValidator: AiQuestResultValidator,
     private val promptBuilder: QuestPromptBuilder,
 ) : AiProvider {
+    override suspend fun reviewQuest(context: QuestReviewContext): AiActionReviewReply {
+        val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
+        val system = promptBuilder.actionReview(context)
+        val user = AiJsonCodec.actionReviewContext(context)
+        var raw = chat(settings, system, user, maxTokens = 1_000)
+        val validator = AiActionReviewValidator(questValidator)
+        repeat(2) { attempt ->
+            try { return validator.validate(AiJsonCodec.parseActionReview(raw), context) }
+            catch (error: Exception) {
+                if (attempt == 1) throw IllegalArgumentException("AI 返回的行动答疑无效：${error.message}")
+                raw = chat(settings, system, user + "\n\n" + QuestPrompts.repair(error.message.orEmpty(), raw), maxTokens = 1_000)
+            }
+        }
+        error("AI 返回的行动答疑无效")
+    }
     override suspend fun clarifyQuest(context: QuestClarificationContext): AiClarificationTurn {
         val settings = settingsStore.readConnectionSettings() ?: error("请先在 AI 设置中保存 DeepSeek API Key")
         var raw = chat(settings, promptBuilder.clarification(context), AiJsonCodec.clarificationContext(context), maxTokens = 700)
@@ -112,6 +127,7 @@ class ConfiguredAiProvider(private val settings: AiSettingsStore, private val de
     private fun active(): AiProvider = if (settings.readPublic().hasApiKey) deepSeek else fake
     override suspend fun clarifyQuest(context: QuestClarificationContext) = active().clarifyQuest(context)
     override suspend fun continueMentorConversation(context: MentorConversationContext) = active().continueMentorConversation(context)
+    override suspend fun reviewQuest(context: QuestReviewContext) = active().reviewQuest(context)
     override suspend fun generateQuest(context: QuestGenerationContext) = active().generateQuest(context)
     override suspend fun analyzeQuestResult(context: QuestResultAnalysisContext) = active().analyzeQuestResult(context)
     override suspend fun testConnection(settings: AiConnectionSettings) = deepSeek.testConnection(settings)

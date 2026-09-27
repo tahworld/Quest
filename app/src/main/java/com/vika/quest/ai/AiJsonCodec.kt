@@ -7,9 +7,9 @@ object AiJsonCodec {
     fun parseQuest(raw: String): AiQuestDraft {
         val json = JSONObject(extractJson(raw))
         return AiQuestDraft(
-            title = json.getString("title"), reason = json.getString("reason"), estimatedMinutes = json.getInt("estimatedMinutes"),
+            title = json.requiredString("title"), reason = json.requiredString("reason"), estimatedMinutes = json.requiredInt("estimatedMinutes"),
             steps = json.getJSONArray("steps").strings(), completionCriteria = json.getJSONArray("completionCriteria").strings(),
-            expectedOutput = json.getString("expectedOutput"), relatedGoalId = json.nullableString("relatedGoalId"),
+            expectedOutput = json.requiredString("expectedOutput"), relatedGoalId = json.nullableString("relatedGoalId"),
             relatedProjectId = json.nullableString("relatedProjectId"),
         )
     }
@@ -50,8 +50,43 @@ object AiJsonCodec {
         )
     }
 
+    fun parseActionReview(raw: String): AiActionReviewReply {
+        val json = JSONObject(extractJson(raw))
+        require(json.has("proposedQuest") && json.has("adjustmentReason")) { "答疑字段缺失" }
+        val proposal = json.get("proposedQuest")
+        require(proposal == JSONObject.NULL || proposal is JSONObject) { "调整建议必须为对象或 null" }
+        return AiActionReviewReply(
+            answer = json.requiredString("answer"),
+            adjustmentReason = json.nullableString("adjustmentReason"),
+            proposedQuest = (proposal as? JSONObject)?.let { parseQuest(it.toString()) },
+        )
+    }
+
+    fun actionReviewJson(reply: AiActionReviewReply): String = JSONObject().apply {
+        put("answer", reply.answer)
+        put("adjustmentReason", reply.adjustmentReason)
+        put("proposedQuest", reply.proposedQuest?.let { draft -> JSONObject().apply {
+            put("title", draft.title); put("reason", draft.reason); put("estimatedMinutes", draft.estimatedMinutes)
+            put("steps", JSONArray(draft.steps)); put("completionCriteria", JSONArray(draft.completionCriteria))
+            put("expectedOutput", draft.expectedOutput); put("relatedGoalId", draft.relatedGoalId); put("relatedProjectId", draft.relatedProjectId)
+        } })
+    }.toString()
+
+    fun actionReviewContext(context: QuestReviewContext): String = JSONObject().apply {
+        put("quest", questJson(context.quest)); put("reason", context.reason); put("steps", JSONArray(context.steps))
+        put("completionCriteria", JSONArray(context.completionCriteria)); put("expectedOutput", context.expectedOutput)
+        put("sourceIntention", context.sourceIntention); put("availableMinutes", context.availableMinutes)
+        put("energy", context.energy); put("resources", JSONArray(context.resources.map { it.name }))
+        put("goal", context.goal?.let { JSONObject().put("id", it.id).put("name", it.name).put("description", it.description) })
+        put("project", context.project?.let { JSONObject().put("id", it.id).put("name", it.name).put("currentState", it.currentState) })
+        put("memories", JSONArray(context.memories.map { JSONObject().put("type", it.type).put("content", it.content) }))
+        put("question", context.question)
+        put("priorAnswers", JSONArray(context.history.map { JSONObject().put("question", it.question).put("answer", it.answer) }))
+    }.toString()
+
     fun generationContext(context: QuestGenerationContext): String = JSONObject().apply {
         put("currentUserIntention", context.userIntention); put("availableMinutes", context.availableMinutes); put("energy", context.energy)
+        put("currentDirection", context.currentDirection?.let { JSONObject().put("id", it.id).put("name", it.name).put("description", it.description) })
         put("resources", JSONArray(context.resources.map { it.name })); put("goals", JSONArray(context.goals.map { JSONObject().put("id", it.id).put("name", it.name).put("description", it.description).put("priority", it.priority) }))
         put("projects", JSONArray(context.projects.map { JSONObject().put("id", it.id).put("goalId", it.goalId).put("name", it.name).put("description", it.description).put("currentState", it.currentState) }))
         put("workingMemory", JSONArray(context.memories.map { JSONObject().put("type", it.type).put("content", it.content).put("importance", it.importance) }))
@@ -104,8 +139,16 @@ object AiJsonCodec {
 
     fun contentFromChatResponse(raw: String): String = JSONObject(raw).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
 
-    private fun JSONArray.strings() = List(length()) { getString(it) }
+    private fun JSONArray.strings() = List(length()) { index ->
+        get(index).let { value -> require(value is String) { "数组元素必须为文本" }; value }
+    }
     private fun questJson(it: QuestSnapshot) = JSONObject().put("id", it.id).put("goalId", it.goalId).put("projectId", it.projectId).put("title", it.title).put("status", it.status).put("resultSummary", it.resultSummary)
-    private fun JSONObject.nullableString(key: String): String? = if (isNull(key)) null else getString(key).takeIf(String::isNotBlank)
+    private fun JSONObject.requiredString(key: String): String = get(key).let { value ->
+        require(value is String) { "$key 必须为文本" }; value
+    }
+    private fun JSONObject.requiredInt(key: String): Int = get(key).let { value ->
+        require(value is Number && value.toDouble() == value.toInt().toDouble()) { "$key 必须为整数" }; value.toInt()
+    }
+    private fun JSONObject.nullableString(key: String): String? = if (isNull(key)) null else requiredString(key).takeIf(String::isNotBlank)
     private fun extractJson(raw: String): String = raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
 }

@@ -5,6 +5,8 @@ interface AiProvider {
 
     suspend fun continueMentorConversation(context: MentorConversationContext): AiMentorReply
 
+    suspend fun reviewQuest(context: QuestReviewContext): AiActionReviewReply
+
     suspend fun generateQuest(context: QuestGenerationContext): AiQuestDraft
 
     suspend fun analyzeQuestResult(context: QuestResultAnalysisContext): AiQuestResultAnalysis

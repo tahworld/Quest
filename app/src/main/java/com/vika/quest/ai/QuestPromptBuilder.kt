@@ -27,6 +27,12 @@ class QuestPromptBuilder {
         contract = QuestPrompts.analysisContract,
     )
 
+    fun actionReview(context: QuestReviewContext): String = assemble(
+        preferences = context.userPreferences,
+        operationRules = QuestPrompts.actionReviewRules,
+        contract = QuestPrompts.actionReviewContract,
+    )
+
     private fun assemble(preferences: List<PreferenceSnapshot>, operationRules: String, contract: String): String = buildString {
         section("QUEST CORE RULES", QuestPrompts.coreRules)
         section("USER PROFILE", profile(preferences))

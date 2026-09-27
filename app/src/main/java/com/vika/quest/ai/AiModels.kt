@@ -11,6 +11,7 @@ data class QuestGenerationContext(
     val recentQuests: List<QuestSnapshot>,
     val recentRejections: List<RejectionSnapshot>,
     val userPreferences: List<PreferenceSnapshot>,
+    val currentDirection: GoalSnapshot? = null,
     val rejectedQuest: QuestSnapshot? = null,
     val rejectionReason: String? = null,
 ) {
@@ -87,6 +88,36 @@ data class AiMentorReply(
     val refinedIntention: String,
     val readyForAction: Boolean,
 )
+
+data class ActionReviewExchange(val question: String, val answer: String)
+
+data class QuestReviewContext(
+    val quest: QuestSnapshot,
+    val reason: String,
+    val steps: List<String>,
+    val completionCriteria: List<String>,
+    val expectedOutput: String,
+    val sourceIntention: String,
+    val availableMinutes: Int,
+    val energy: Int,
+    val resources: Set<QuestResource>,
+    val goal: GoalSnapshot?,
+    val project: ProjectSnapshot?,
+    val memories: List<MemorySnapshot>,
+    val userPreferences: List<PreferenceSnapshot>,
+    val question: String,
+    val history: List<ActionReviewExchange>,
+) {
+    init { require(memories.size <= 3); require(history.size <= 3); require(availableMinutes > 0) }
+
+    fun generationContext() = QuestGenerationContext(
+        sourceIntention, availableMinutes, energy, resources,
+        listOfNotNull(goal), listOfNotNull(project), memories, listOf(quest), emptyList(), userPreferences,
+        currentDirection = goal,
+    )
+}
+
+data class AiActionReviewReply(val answer: String, val adjustmentReason: String?, val proposedQuest: AiQuestDraft?)
 
 enum class QuestResource { PHONE, COMPUTER, QUIET_THINKING, CAN_MOVE_OR_EXERCISE }
 
