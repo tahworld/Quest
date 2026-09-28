@@ -2169,7 +2169,7 @@ index 0000000..52a76f5
 +}
 diff --git a/app/src/main/java/com/vika/quest/data/repository/ContinueRepository.kt b/app/src/main/java/com/vika/quest/data/repository/ContinueRepository.kt
 new file mode 100644
-index 0000000..1bc8b5b
+index 0000000..ef2b86e
 --- /dev/null
 +++ b/app/src/main/java/com/vika/quest/data/repository/ContinueRepository.kt
 @@ -0,0 +1,88 @@
@@ -2211,7 +2211,7 @@ index 0000000..1bc8b5b
 +        val session = checkNotNull(dao.session(questId))
 +        val turns = dao.turns(session.id)
 +        turns.lastOrNull()?.takeIf { it.answer == null }?.let { return@withTransaction it }
-+        check(session.status != "PAUSED" && session.questionCount < MAX_QUESTIONS) { "追问已结束" }
++        check(session.status !in setOf("PAUSED", "NEXT_QUEST_READY") && session.questionCount < MAX_QUESTIONS) { "追问已结束" }
 +        val now = System.currentTimeMillis()
 +        val turn = ContinueTurnEntity(UUID.randomUUID().toString(), session.id, session.questionCount, "QUESTION", question, null, reasoningType, now)
 +        dao.insertTurn(turn)
