@@ -47,6 +47,13 @@ jobs:
         run: ./gradlew --no-daemon :app:assembleDebug
       - name: Compile Android tests
         run: ./gradlew --no-daemon :app:compileDebugAndroidTestSources
+      - name: Upload exported Room schemas
+        uses: actions/upload-artifact@v7
+        with:
+          name: Quest-continuation-room-schemas
+          path: app/schemas/
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify APK signing certificate
         run: |
           "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
