@@ -1,3 +1,1066 @@
+diff --git a/app/schemas/com.vika.quest.data.local.QuestDatabase/4.json b/app/schemas/com.vika.quest.data.local.QuestDatabase/4.json
+new file mode 100644
+index 0000000..9617f6f
+--- /dev/null
++++ b/app/schemas/com.vika.quest.data.local.QuestDatabase/4.json
+@@ -0,0 +1,1056 @@
++{
++  "formatVersion": 1,
++  "database": {
++    "version": 4,
++    "identityHash": "6248e8bf82cca6d8ae9c94b0cf212691",
++    "entities": [
++      {
++        "tableName": "goals",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `priority` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "name",
++            "columnName": "name",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "description",
++            "columnName": "description",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "priority",
++            "columnName": "priority",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        }
++      },
++      {
++        "tableName": "projects",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `goalId` TEXT, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `currentState` TEXT NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`goalId`) REFERENCES `goals`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "goalId",
++            "columnName": "goalId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "name",
++            "columnName": "name",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "description",
++            "columnName": "description",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "currentState",
++            "columnName": "currentState",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "status",
++            "columnName": "status",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "updatedAt",
++            "columnName": "updatedAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_projects_goalId",
++            "unique": false,
++            "columnNames": [
++              "goalId"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_projects_goalId` ON `${TABLE_NAME}` (`goalId`)"
++          },
++          {
++            "name": "index_projects_status",
++            "unique": false,
++            "columnNames": [
++              "status"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_projects_status` ON `${TABLE_NAME}` (`status`)"
++          },
++          {
++            "name": "index_projects_updatedAt",
++            "unique": false,
++            "columnNames": [
++              "updatedAt"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_projects_updatedAt` ON `${TABLE_NAME}` (`updatedAt`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "goals",
++            "onDelete": "SET NULL",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "goalId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "memories",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `goalId` TEXT, `projectId` TEXT, `type` TEXT NOT NULL, `content` TEXT NOT NULL, `importance` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`goalId`) REFERENCES `goals`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "goalId",
++            "columnName": "goalId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "projectId",
++            "columnName": "projectId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "type",
++            "columnName": "type",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "content",
++            "columnName": "content",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "importance",
++            "columnName": "importance",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_memories_goalId",
++            "unique": false,
++            "columnNames": [
++              "goalId"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_memories_goalId` ON `${TABLE_NAME}` (`goalId`)"
++          },
++          {
++            "name": "index_memories_projectId",
++            "unique": false,
++            "columnNames": [
++              "projectId"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_memories_projectId` ON `${TABLE_NAME}` (`projectId`)"
++          },
++          {
++            "name": "index_memories_importance",
++            "unique": false,
++            "columnNames": [
++              "importance"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_memories_importance` ON `${TABLE_NAME}` (`importance`)"
++          },
++          {
++            "name": "index_memories_createdAt",
++            "unique": false,
++            "columnNames": [
++              "createdAt"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_memories_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "goals",
++            "onDelete": "SET NULL",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "goalId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          },
++          {
++            "table": "projects",
++            "onDelete": "SET NULL",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "projectId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "quests",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `goalId` TEXT, `projectId` TEXT, `skillId` TEXT, `chainId` TEXT, `title` TEXT NOT NULL, `reason` TEXT NOT NULL, `steps` TEXT NOT NULL, `instruction` TEXT NOT NULL, `estimatedMinutes` INTEGER NOT NULL, `completionCriteria` TEXT NOT NULL, `expectedOutput` TEXT NOT NULL, `difficulty` INTEGER NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `completedAt` INTEGER, `sourceIntention` TEXT NOT NULL, `sourceAvailableMinutes` INTEGER NOT NULL, `sourceEnergy` INTEGER NOT NULL, `sourceResources` TEXT NOT NULL, `parentQuestId` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`goalId`) REFERENCES `goals`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "goalId",
++            "columnName": "goalId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "projectId",
++            "columnName": "projectId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "skillId",
++            "columnName": "skillId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "chainId",
++            "columnName": "chainId",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "title",
++            "columnName": "title",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "reason",
++            "columnName": "reason",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "steps",
++            "columnName": "steps",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "instruction",
++            "columnName": "instruction",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "estimatedMinutes",
++            "columnName": "estimatedMinutes",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "completionCriteria",
++            "columnName": "completionCriteria",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "expectedOutput",
++            "columnName": "expectedOutput",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "difficulty",
++            "columnName": "difficulty",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "status",
++            "columnName": "status",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "completedAt",
++            "columnName": "completedAt",
++            "affinity": "INTEGER"
++          },
++          {
++            "fieldPath": "sourceIntention",
++            "columnName": "sourceIntention",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "sourceAvailableMinutes",
++            "columnName": "sourceAvailableMinutes",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "sourceEnergy",
++            "columnName": "sourceEnergy",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "sourceResources",
++            "columnName": "sourceResources",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "parentQuestId",
++            "columnName": "parentQuestId",
++            "affinity": "TEXT"
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_quests_goalId",
++            "unique": false,
++            "columnNames": [
++              "goalId"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_quests_goalId` ON `${TABLE_NAME}` (`goalId`)"
++          },
++          {
++            "name": "index_quests_projectId",
++            "unique": false,
++            "columnNames": [
++              "projectId"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_quests_projectId` ON `${TABLE_NAME}` (`projectId`)"
++          },
++          {
++            "name": "index_quests_createdAt",
++            "unique": false,
++            "columnNames": [
++              "createdAt"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_quests_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
++          },
++          {
++            "name": "index_quests_status",
++            "unique": false,
++            "columnNames": [
++              "status"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_quests_status` ON `${TABLE_NAME}` (`status`)"
++          },
++          {
++            "name": "index_quests_parentQuestId",
++            "unique": true,
++            "columnNames": [
++              "parentQuestId"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_quests_parentQuestId` ON `${TABLE_NAME}` (`parentQuestId`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "goals",
++            "onDelete": "SET NULL",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "goalId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          },
++          {
++            "table": "projects",
++            "onDelete": "SET NULL",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "projectId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "quest_results",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `questId` TEXT NOT NULL, `resultText` TEXT NOT NULL, `actualMinutes` INTEGER, `difficultyRating` TEXT, `usefulnessRating` INTEGER, `createdAt` INTEGER NOT NULL, `analysisSummary` TEXT, `evidence` TEXT NOT NULL, `insights` TEXT NOT NULL, `projectProgress` TEXT, `suggestedNextStep` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`questId`) REFERENCES `quests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "questId",
++            "columnName": "questId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "resultText",
++            "columnName": "resultText",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "actualMinutes",
++            "columnName": "actualMinutes",
++            "affinity": "INTEGER"
++          },
++          {
++            "fieldPath": "difficultyRating",
++            "columnName": "difficultyRating",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "usefulnessRating",
++            "columnName": "usefulnessRating",
++            "affinity": "INTEGER"
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "analysisSummary",
++            "columnName": "analysisSummary",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "evidence",
++            "columnName": "evidence",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "insights",
++            "columnName": "insights",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "projectProgress",
++            "columnName": "projectProgress",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "suggestedNextStep",
++            "columnName": "suggestedNextStep",
++            "affinity": "TEXT"
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_quest_results_questId",
++            "unique": true,
++            "columnNames": [
++              "questId"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_quest_results_questId` ON `${TABLE_NAME}` (`questId`)"
++          },
++          {
++            "name": "index_quest_results_createdAt",
++            "unique": false,
++            "columnNames": [
++              "createdAt"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_quest_results_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "quests",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "questId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "quest_rejections",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `questId` TEXT NOT NULL, `reason` TEXT NOT NULL, `details` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`questId`) REFERENCES `quests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "questId",
++            "columnName": "questId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "reason",
++            "columnName": "reason",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "details",
++            "columnName": "details",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_quest_rejections_questId",
++            "unique": true,
++            "columnNames": [
++              "questId"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_quest_rejections_questId` ON `${TABLE_NAME}` (`questId`)"
++          },
++          {
++            "name": "index_quest_rejections_createdAt",
++            "unique": false,
++            "columnNames": [
++              "createdAt"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_quest_rejections_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "quests",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "questId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "user_preferences",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
++        "fields": [
++          {
++            "fieldPath": "key",
++            "columnName": "key",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "value",
++            "columnName": "value",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "updatedAt",
++            "columnName": "updatedAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "key"
++          ]
++        }
++      },
++      {
++        "tableName": "expeditions",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`goalId` TEXT NOT NULL, `completedActions` INTEGER NOT NULL, `supplies` INTEGER NOT NULL, `campfireLevel` INTEGER NOT NULL, `shelterLevel` INTEGER NOT NULL, `lookoutLevel` INTEGER NOT NULL, PRIMARY KEY(`goalId`), FOREIGN KEY(`goalId`) REFERENCES `goals`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "goalId",
++            "columnName": "goalId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "completedActions",
++            "columnName": "completedActions",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "supplies",
++            "columnName": "supplies",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "campfireLevel",
++            "columnName": "campfireLevel",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "shelterLevel",
++            "columnName": "shelterLevel",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "lookoutLevel",
++            "columnName": "lookoutLevel",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "goalId"
++          ]
++        },
++        "foreignKeys": [
++          {
++            "table": "goals",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "goalId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "artifacts",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `questId` TEXT NOT NULL, `title` TEXT NOT NULL, `kind` TEXT NOT NULL, `value` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`questId`) REFERENCES `quests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "questId",
++            "columnName": "questId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "title",
++            "columnName": "title",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "kind",
++            "columnName": "kind",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "value",
++            "columnName": "value",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_artifacts_questId",
++            "unique": true,
++            "columnNames": [
++              "questId"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_artifacts_questId` ON `${TABLE_NAME}` (`questId`)"
++          },
++          {
++            "name": "index_artifacts_createdAt",
++            "unique": false,
++            "columnNames": [
++              "createdAt"
++            ],
++            "orders": [],
++            "createSql": "CREATE INDEX IF NOT EXISTS `index_artifacts_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "quests",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "questId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "continue_sessions",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `questId` TEXT NOT NULL, `status` TEXT NOT NULL, `questionCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`questId`) REFERENCES `quests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "questId",
++            "columnName": "questId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "status",
++            "columnName": "status",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "questionCount",
++            "columnName": "questionCount",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "updatedAt",
++            "columnName": "updatedAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_continue_sessions_questId",
++            "unique": true,
++            "columnNames": [
++              "questId"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_continue_sessions_questId` ON `${TABLE_NAME}` (`questId`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "quests",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "questId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "continue_turns",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `turnIndex` INTEGER NOT NULL, `type` TEXT NOT NULL, `question` TEXT, `answer` TEXT, `reasoningType` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `continue_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "sessionId",
++            "columnName": "sessionId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "turnIndex",
++            "columnName": "turnIndex",
++            "affinity": "INTEGER",
++            "notNull": true
++          },
++          {
++            "fieldPath": "type",
++            "columnName": "type",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "question",
++            "columnName": "question",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "answer",
++            "columnName": "answer",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "reasoningType",
++            "columnName": "reasoningType",
++            "affinity": "TEXT"
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_continue_turns_sessionId_turnIndex",
++            "unique": true,
++            "columnNames": [
++              "sessionId",
++              "turnIndex"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_continue_turns_sessionId_turnIndex` ON `${TABLE_NAME}` (`sessionId`, `turnIndex`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "continue_sessions",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "sessionId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      },
++      {
++        "tableName": "advice_results",
++        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `questId` TEXT NOT NULL, `core` TEXT NOT NULL, `action` TEXT NOT NULL, `later` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`questId`) REFERENCES `quests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
++        "fields": [
++          {
++            "fieldPath": "id",
++            "columnName": "id",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "questId",
++            "columnName": "questId",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "core",
++            "columnName": "core",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "action",
++            "columnName": "action",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "later",
++            "columnName": "later",
++            "affinity": "TEXT",
++            "notNull": true
++          },
++          {
++            "fieldPath": "createdAt",
++            "columnName": "createdAt",
++            "affinity": "INTEGER",
++            "notNull": true
++          }
++        ],
++        "primaryKey": {
++          "autoGenerate": false,
++          "columnNames": [
++            "id"
++          ]
++        },
++        "indices": [
++          {
++            "name": "index_advice_results_questId",
++            "unique": true,
++            "columnNames": [
++              "questId"
++            ],
++            "orders": [],
++            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_advice_results_questId` ON `${TABLE_NAME}` (`questId`)"
++          }
++        ],
++        "foreignKeys": [
++          {
++            "table": "quests",
++            "onDelete": "CASCADE",
++            "onUpdate": "NO ACTION",
++            "columns": [
++              "questId"
++            ],
++            "referencedColumns": [
++              "id"
++            ]
++          }
++        ]
++      }
++    ],
++    "setupQueries": [
++      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
++      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6248e8bf82cca6d8ae9c94b0cf212691')"
++    ]
++  }
++}
+\ No newline at end of file
 diff --git a/app/src/androidTest/java/com/vika/quest/ai/AiJsonCodecTest.kt b/app/src/androidTest/java/com/vika/quest/ai/AiJsonCodecTest.kt
 index 2530531..d100023 100644
 --- a/app/src/androidTest/java/com/vika/quest/ai/AiJsonCodecTest.kt
@@ -277,10 +1340,10 @@ index a9ee8c7..ae19a98 100644
      private class CountingProvider : AiProvider by FakeAiProvider() {
 diff --git a/app/src/androidTest/java/com/vika/quest/ui/quest/ContinueViewModelTest.kt b/app/src/androidTest/java/com/vika/quest/ui/quest/ContinueViewModelTest.kt
 new file mode 100644
-index 0000000..c6017a0
+index 0000000..58f7398
 --- /dev/null
 +++ b/app/src/androidTest/java/com/vika/quest/ui/quest/ContinueViewModelTest.kt
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,93 @@
 +package com.vika.quest.ui.quest
 +
 +import androidx.lifecycle.SavedStateHandle
@@ -332,6 +1395,25 @@ index 0000000..c6017a0
 +            withTimeout(5_000) { while (repository.session(parent.id)?.status != "PAUSED") delay(10) }
 +            assertEquals("PAUSED", repository.session(parent.id)?.status)
 +            assertNull(repository.child(parent.id))
++        } finally { db.close() }
++    }
++
++    @Test fun recreatedViewModelRestoresPersistedQuestionAndAnswerDraft() = runBlocking {
++        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, QuestDatabase::class.java).build()
++        try {
++            val quests = QuestRepository(db)
++            val parent = completed(quests)
++            val repository = ContinueRepository(db, quests)
++            val session = repository.begin(parent.id)
++            repository.saveQuestion(parent.id, "眼前最需要确认的具体障碍是什么？", "identify_blocker")
++            val handle = SavedStateHandle(mapOf("continue_answer" to "今晚八点才有空"))
++            val vm = ContinueViewModel(parent.id, quests, repository,
++                ContextBuilder(GoalRepository(db.goalDao()), ProjectRepository(db.projectDao()), MemoryRepository(db.memoryDao()), quests, UserPreferenceRepository(db.userPreferenceDao())),
++                FakeAiProvider(), AiContinueValidator(AiQuestDraftValidator()), handle)
++            val restored = withTimeout(5_000) { vm.state.first { it.phase == ContinuePhase.ASKING } }
++            assertEquals("眼前最需要确认的具体障碍是什么？", restored.question)
++            assertEquals("今晚八点才有空", restored.answer)
++            assertEquals(1, repository.turns(session.id).size)
 +        } finally { db.close() }
 +    }
 +
@@ -1372,7 +2454,7 @@ index 18af892..bfd93b4 100644
 +    fun expedition(goalId: String): String = "expedition/$goalId"
  }
 diff --git a/app/src/main/java/com/vika/quest/ui/QuestApp.kt b/app/src/main/java/com/vika/quest/ui/QuestApp.kt
-index f696760..ceac642 100644
+index f696760..3e48d8b 100644
 --- a/app/src/main/java/com/vika/quest/ui/QuestApp.kt
 +++ b/app/src/main/java/com/vika/quest/ui/QuestApp.kt
 @@ -19,6 +19,7 @@ import com.vika.quest.ui.project.*
@@ -1383,7 +2465,7 @@ index f696760..ceac642 100644
  
  @Composable fun QuestApp(container: AppContainer) {
      val appVm: AppViewModel = viewModel(factory = remember(container) { ViewModelFactory { _ -> AppViewModel(container.goalRepository, container.userPreferenceRepository) } })
-@@ -39,7 +40,7 @@ import com.vika.quest.ui.settings.*
+@@ -39,25 +40,33 @@ import com.vika.quest.ui.settings.*
              PersonaScreen(vm, isEditing = true, onComplete = { nav.popBackStack() }, onBack = { nav.popBackStack() })
          }
          composable(Routes.HOME) { entry ->
@@ -1392,7 +2474,9 @@ index f696760..ceac642 100644
              val transfer by entry.savedStateHandle.getStateFlow("conditions_nonce", 0L).collectAsStateWithLifecycle()
              LaunchedEffect(transfer) { if (transfer > 0) vm.applyConditions(entry.savedStateHandle[HomeViewModel.INTENTION] ?: "", entry.savedStateHandle[HomeViewModel.MINUTES] ?: 15, entry.savedStateHandle[HomeViewModel.ENERGY] ?: 3, entry.savedStateHandle.get<ArrayList<String>>(HomeViewModel.RESOURCES).orEmpty()) }
              HomeScreen(
-@@ -48,16 +49,23 @@ import com.vika.quest.ui.settings.*
+                 vm,
+                 onQuestGenerated = { id -> nav.navigate(Routes.quest(id)); vm.consumeGeneratedQuest(id) },
++                onResumeCompleted = { nav.navigate(Routes.quest(it)) },
                  onProjects = { nav.navigate(Routes.PROJECTS) },
                  onPersona = { nav.navigate(Routes.PERSONA_EDIT) },
                  onSettings = { nav.navigate(Routes.SETTINGS) },
@@ -1702,7 +2786,7 @@ index 0000000..6d18488
 +    }
 +}
 diff --git a/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt b/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
-index 65e8e6a..f6aa66f 100644
+index 65e8e6a..b9fc626 100644
 --- a/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
 +++ b/app/src/main/java/com/vika/quest/ui/home/HomeScreen.kt
 @@ -5,11 +5,15 @@ import androidx.compose.foundation.rememberScrollState
@@ -1721,7 +2805,11 @@ index 65e8e6a..f6aa66f 100644
  import kotlin.math.roundToInt
  
  @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@@ -20,59 +24,83 @@ fun HomeScreen(
+@@ -17,62 +21,87 @@ import kotlin.math.roundToInt
+ fun HomeScreen(
+     viewModel: HomeViewModel,
+     onQuestGenerated: (String) -> Unit,
++    onResumeCompleted: (String) -> Unit,
      onProjects: () -> Unit,
      onPersona: () -> Unit,
      onSettings: () -> Unit,
@@ -1830,7 +2918,7 @@ index 65e8e6a..f6aa66f 100644
              if (showConditions) {
                  Text("可用时间", style = MaterialTheme.typography.titleMedium)
                  FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-@@ -90,10 +118,16 @@ fun HomeScreen(
+@@ -90,10 +119,17 @@ fun HomeScreen(
                  }
              }
              state.errorMessage?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
@@ -1847,11 +2935,12 @@ index 65e8e6a..f6aa66f 100644
 +                Spacer(Modifier.height(18.dp))
 +                Text("上次留下 · $it", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
 +                    maxLines = 2, overflow = TextOverflow.Ellipsis)
++                state.recentCompletedQuestId?.let { id -> TextButton(onClick = { onResumeCompleted(id) }) { Text("回到上次完成的一步 ›") } }
              }
              Spacer(Modifier.height(24.dp))
          }
 diff --git a/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt b/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
-index 264d6e1..1a9df5c 100644
+index 264d6e1..6e5bd67 100644
 --- a/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
 +++ b/app/src/main/java/com/vika/quest/ui/home/HomeViewModel.kt
 @@ -15,6 +15,8 @@ import com.vika.quest.data.repository.GoalRepository
@@ -1873,15 +2962,16 @@ index 264d6e1..1a9df5c 100644
  import kotlinx.coroutines.launch
  
  data class HomeUiState(
-@@ -44,6 +49,7 @@ data class HomeUiState(
+@@ -44,6 +49,8 @@ data class HomeUiState(
      val goals: List<GoalEntity> = emptyList(),
      val currentGoalId: String? = null,
      val recentProgress: String? = null,
++    val recentCompletedQuestId: String? = null,
 +    val expedition: ExpeditionEntity? = null,
      val isSavingDirection: Boolean = false,
  ) {
      val isBusy: Boolean get() = isGenerating || isClarifying
-@@ -60,6 +66,7 @@ class HomeViewModel(
+@@ -60,6 +67,7 @@ class HomeViewModel(
      private val clarificationValidator: AiClarificationValidator,
      private val goals: GoalRepository,
      private val preferences: UserPreferenceRepository,
@@ -1889,7 +2979,7 @@ index 264d6e1..1a9df5c 100644
  ) : ViewModel() {
      private val restoredHistory = restoreHistory()
      private val _uiState = MutableStateFlow(
-@@ -80,6 +87,14 @@ class HomeViewModel(
+@@ -80,6 +88,14 @@ class HomeViewModel(
      val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
  
      init {
@@ -1904,6 +2994,24 @@ index 264d6e1..1a9df5c 100644
          viewModelScope.launch {
              combine(goals.observeGoals(), questRepository.observeRecentQuests(8)) { allGoals, recent -> allGoals to recent }
                  .collectLatest { (allGoals, recent) ->
+@@ -87,7 +103,7 @@ class HomeViewModel(
+                     val selected = allGoals.firstOrNull { it.id == stored } ?: allGoals.firstOrNull()
+                     val latest = recent.firstOrNull { it.goalId == selected?.id && it.status == QuestStatus.COMPLETED }
+                     val result = latest?.let { questRepository.getResult(it.id) }
+-                    _uiState.update { it.copy(goals = allGoals, currentGoalId = selected?.id, recentProgress = result?.resultText?.take(160)) }
++                    _uiState.update { it.copy(goals = allGoals, currentGoalId = selected?.id, recentProgress = result?.resultText?.take(160), recentCompletedQuestId = latest?.id) }
+                 }
+         }
+     }
+@@ -100,7 +116,7 @@ class HomeViewModel(
+                 preferences.save(UserPreferenceKeys.ACTIVE_DIRECTION_GOAL_ID, id)
+                 val recent = questRepository.getRecentQuests(20).firstOrNull { it.goalId == id && it.status == QuestStatus.COMPLETED }
+                 val result = recent?.let { questRepository.getResult(it.id) }
+-                _uiState.update { it.copy(currentGoalId = id, recentProgress = result?.resultText?.take(160), isSavingDirection = false, errorMessage = null) }
++                _uiState.update { it.copy(currentGoalId = id, recentProgress = result?.resultText?.take(160), recentCompletedQuestId = recent?.id, isSavingDirection = false, errorMessage = null) }
+             } catch (error: Exception) {
+                 _uiState.update { it.copy(isSavingDirection = false, errorMessage = "方向保存失败，请重试。") }
+             }
 diff --git a/app/src/main/java/com/vika/quest/ui/quest/ContinuePanel.kt b/app/src/main/java/com/vika/quest/ui/quest/ContinuePanel.kt
 new file mode 100644
 index 0000000..9592111
