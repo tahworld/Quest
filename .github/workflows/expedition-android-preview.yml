@@ -1,0 +1,65 @@
+name: Quest expedition preview
+
+on:
+  pull_request:
+    paths:
+      - expedition-code.patch
+      - .github/workflows/expedition-android-preview.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Apply expedition changes
+        run: |
+          git apply --check expedition-code.patch
+          git apply expedition-code.patch
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install Android SDK packages
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.1.0"
+      - name: Configure stable debug signing
+        env:
+          QUEST_DEBUG_KEYSTORE_BASE64: ${{ secrets.QUEST_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$QUEST_DEBUG_KEYSTORE_BASE64" ]; then
+            echo "Stable debug signing is required for an upgrade-compatible preview APK."
+            exit 1
+          fi
+          signing_dir="$RUNNER_TEMP/android-user-home"
+          mkdir -p "$signing_dir"
+          printf '%s' "$QUEST_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$signing_dir/debug.keystore"
+          keytool -list -keystore "$signing_dir/debug.keystore" -storepass android -alias androiddebugkey > /dev/null
+          echo "ANDROID_USER_HOME=$signing_dir" >> "$GITHUB_ENV"
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+      - name: Run unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Build Debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Compile Android tests
+        run: ./gradlew --no-daemon :app:compileDebugAndroidTestSources
+      - name: Upload exported Room schemas
+        uses: actions/upload-artifact@v7
+        with:
+          name: Quest-continuation-room-schemas
+          path: app/schemas/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify APK signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Quest-expedition-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

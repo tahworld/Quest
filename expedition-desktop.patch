@@ -1,0 +1,268 @@
+diff --git a/desktop/README.md b/desktop/README.md
+index 77deb54..3133a3c 100644
+--- a/desktop/README.md
++++ b/desktop/README.md
+@@ -4,6 +4,6 @@ Windows 10/11 双击 `Quest.exe`。首次运行填写想坚持的方向，选择
+ 
+ 填写自己的 DeepSeek API Key 后使用在线模型；模型名和 HTTPS Base URL 可修改。留空时使用离线示例，示例不代表在线模型的实际质量。Key 仅保留在本次运行的内存中，关闭软件后需要重新填写。
+ 
+-本机记录存储于 `%LOCALAPPDATA%\Quest\quest-desktop.db`，与 Android 数据不互通。此测试端包含方向、行动生成、换一个、开始、完成及结果接续；它没有 Android 版的项目、人设、行动答疑和完整结果分析功能。
++本机记录存储于 `%LOCALAPPDATA%\Quest\quest-desktop.db`，与 Android 数据不互通。此测试端包含方向、行动生成、换一个、开始、完成及结果接续。完成行动后可在“我的旅程”查看路线、建设营地和打开文字成果。已有完成记录会计入旅程；Android 的附件成果和 Windows 的数据仍各自保存在本机。Windows 测试端没有 Android 版的项目、人设、行动答疑和完整结果分析功能。
+ 
+ 仓库的 Windows desktop trial 工作流在 Windows runner 上运行测试并打包 `Quest.exe`。需要自行运行源码时，安装 Python 3.12，然后在仓库根目录执行 `python desktop/quest.py`。运行测试：`python -m unittest discover -s desktop/tests -v`。
+diff --git a/desktop/quest.py b/desktop/quest.py
+index 6bcfdde..5e855e2 100644
+--- a/desktop/quest.py
++++ b/desktop/quest.py
+@@ -21,8 +21,8 @@ class QuestApp:
+         self.root = root
+         self.store = store or Store()
+         self.root.title("Quest · 今天的一步")
+-        self.root.geometry("860x760")
+-        self.root.minsize(690, 650)
++        self.root.geometry("860x820")
++        self.root.minsize(690, 760)
+         self.root.configure(bg=BG)
+         self.direction = self.store.direction()
+         self.intention = ""
+@@ -110,6 +110,8 @@ class QuestApp:
+         active = self.store.latest_active()
+         if active:
+             self.button(actions, "继续进行中的行动", lambda: self.show_quest(active["id"]), False)
++        if self.direction:
++            self.button(actions, "我的旅程", self.open_expedition, False)
+         self.status = self.label("", 10, MUTED, pady=(6, 18))
+ 
+         settings = ttk.LabelFrame(self.panel, text="AI 设置 · 测试时由使用者填写自己的 Key")
+@@ -208,8 +210,102 @@ class QuestApp:
+             self.button(row, "返回首页", self.show_home, False)
+         else:
+             self.label("这条行动已结束。", 11, MUTED)
++            if quest["status"] == "COMPLETED":
++                self.button(row, "查看旅程", lambda: self.show_expedition(quest["direction"]))
+             self.button(row, "返回首页", self.show_home, False)
+ 
++    def open_expedition(self):
++        self.remember_form()
++        if not self.direction:
++            messagebox.showinfo("我的旅程", "先填写一个想坚持的方向。")
++            return
++        self.store.save_direction(self.direction)
++        self.show_expedition(self.direction)
++
++    def show_expedition(self, direction):
++        self.clear()
++        state = self.store.expedition(direction)
++        completed = state["completed_actions"]
++        chapter, revealed = divmod(completed, 10)
++        self.label("我的旅程 · " + direction, 21, INK, True, (0, 8))
++        self.label(f"第 {chapter + 1} 章 · 累计走出 {completed} 步", 11, MUTED, pady=(0, 15))
++
++        route = tk.Canvas(self.panel, height=170, bg=MINT, highlightthickness=0)
++        route.pack(fill="x", pady=(0, 7))
++
++        def draw_route(event):
++            route.delete("all")
++            points = [(40 + (event.width - 80) * (i if i < 5 else 9 - i) / 4,
++                       48 if i < 5 else 125) for i in range(10)]
++            for index, (start, end) in enumerate(zip(points, points[1:])):
++                route.create_line(*start, *end, width=5,
++                                  fill=GREEN if index < revealed else "#a8bfb4")
++            for index, (x, y) in enumerate(points):
++                color = GREEN if index < revealed else "#a8bfb4"
++                if index == revealed:
++                    color = "#e39b63"
++                route.create_oval(x - 11, y - 11, x + 11, y + 11, fill=color, outline="")
++        route.bind("<Configure>", draw_route)
++        self.label("每完成一次真实行动，路线向前一格，营地获得 1 份物资。", 10, MUTED, pady=(0, 18))
++
++        self.label(f"我的营地 · 物资 {state['supplies']}", 16, INK, True, (0, 8))
++        camp = tk.Canvas(self.panel, height=90, bg="#e5f2e8", highlightthickness=0)
++        camp.pack(fill="x", pady=(0, 10))
++
++        def draw_camp(event):
++            camp.delete("all")
++            width = event.width
++            camp.create_line(0, 74, width, 74, fill=GREEN, width=3)
++            if state["campfire_level"]:
++                x = width * .2
++                camp.create_oval(x - 13, 50, x + 13, 76, fill="#e39b63", outline="")
++            if state["shelter_level"]:
++                x = width * .52
++                camp.create_rectangle(x - 27, 39, x + 27, 74, fill="#9bcbb6", outline="")
++                camp.create_polygon(x - 36, 39, x, 13, x + 36, 39, fill=GREEN)
++            if state["lookout_level"]:
++                x = width * .82
++                camp.create_line(x - 15, 73, x - 15, 23, x + 15, 23, x + 15, 73,
++                                 fill=GREEN, width=4)
++        camp.bind("<Configure>", draw_camp)
++        for key, title in (("campfire", "篝火"), ("shelter", "小屋"), ("lookout", "瞭望台")):
++            level = state[key + "_level"]
++            row = tk.Frame(self.panel, bg=BG)
++            row.pack(fill="x")
++            tk.Label(row, text=f"{title}  ·  {level}/3 级", bg=BG, fg=INK,
++                     font=("Microsoft YaHei UI", 11)).pack(side="left", padx=(0, 20))
++            price = level + 2
++            button = self.button(row, "已建成" if level == 3 else f"建设 · {price} 物资",
++                                 lambda building=key: self.build_camp(direction, building), False)
++            if level == 3 or state["supplies"] < price:
++                button.config(state="disabled")
++
++        self.label("成果陈列", 16, INK, True, (14, 7))
++        artifacts = self.store.artifacts(direction)
++        if artifacts:
++            listed = tk.Listbox(self.panel, height=5, font=("Microsoft YaHei UI", 10),
++                                relief="flat", bg="white", fg=INK)
++            listed.pack(fill="x", pady=(0, 8))
++            for artifact in artifacts:
++                listed.insert("end", artifact["title"])
++
++            def open_artifact(_event):
++                selection = listed.curselection()
++                if selection:
++                    item = artifacts[selection[0]]
++                    messagebox.showinfo(item["title"], item["content"], parent=self.root)
++            listed.bind("<Double-1>", open_artifact)
++            self.label("双击成果查看实际记录。", 9, MUTED, pady=(0, 7))
++        else:
++            self.label("走出第一步后，成果会留在这里。", 10, MUTED)
++        row = tk.Frame(self.panel, bg=BG)
++        row.pack(fill="x")
++        self.button(row, "返回首页", self.show_home, False)
++
++    def build_camp(self, direction, building):
++        if self.store.build(direction, building):
++            self.show_expedition(direction)
++
+     def start_quest(self, quest_id):
+         if self.store.transition(quest_id, "PENDING", "ACTIVE"):
+             self.show_quest(quest_id)
+diff --git a/desktop/storage.py b/desktop/storage.py
+index 200fda1..22a373a 100644
+--- a/desktop/storage.py
++++ b/desktop/storage.py
+@@ -34,7 +34,27 @@ class Store:
+                     quest_id INTEGER NOT NULL, reason TEXT NOT NULL,
+                     created_at INTEGER NOT NULL
+                 );
++                CREATE TABLE IF NOT EXISTS expedition (
++                    direction TEXT PRIMARY KEY,
++                    completed_actions INTEGER NOT NULL DEFAULT 0,
++                    supplies INTEGER NOT NULL DEFAULT 0,
++                    campfire_level INTEGER NOT NULL DEFAULT 0,
++                    shelter_level INTEGER NOT NULL DEFAULT 0,
++                    lookout_level INTEGER NOT NULL DEFAULT 0
++                );
++                CREATE TABLE IF NOT EXISTS artifact (
++                    quest_id INTEGER PRIMARY KEY REFERENCES quest(id),
++                    direction TEXT NOT NULL, title TEXT NOT NULL,
++                    content TEXT NOT NULL, created_at INTEGER NOT NULL
++                );
+             """)
++            db.execute("INSERT OR IGNORE INTO expedition(direction,completed_actions,supplies) "
++                       "SELECT direction,COUNT(*),COUNT(*) FROM quest WHERE status='COMPLETED' GROUP BY direction")
++            for quest_id, direction, draft, result, completed_at in db.execute(
++                    "SELECT id,direction,draft,result_text,completed_at FROM quest "
++                    "WHERE status='COMPLETED' AND result_text IS NOT NULL"):
++                db.execute("INSERT OR IGNORE INTO artifact(quest_id,direction,title,content,created_at) "
++                           "VALUES(?,?,?,?,?)", (quest_id, direction, json.loads(draft)["title"], result, completed_at))
+ 
+     @contextmanager
+     def connect(self):
+@@ -89,14 +109,50 @@ class Store:
+ 
+     def transition(self, quest_id, old_status, new_status, result=None):
+         with self.connect() as db:
++            existing = db.execute("SELECT direction,draft FROM quest WHERE id=?", (quest_id,)).fetchone()
+             cursor = db.execute(
+                 "UPDATE quest SET status=?, result_text=?, completed_at=? "
+                 "WHERE id=? AND status=?",
+                 (new_status, result, int(time.time()) if new_status == "COMPLETED" else None,
+                  quest_id, old_status),
+             )
++            if cursor.rowcount == 1 and new_status == "COMPLETED" and existing:
++                direction, draft = existing
++                db.execute("INSERT INTO expedition(direction,completed_actions,supplies) VALUES(?,1,1) "
++                           "ON CONFLICT(direction) DO UPDATE SET completed_actions=completed_actions+1,supplies=supplies+1",
++                           (direction,))
++                db.execute("INSERT INTO artifact(quest_id,direction,title,content,created_at) VALUES(?,?,?,?,?)",
++                           (quest_id, direction, json.loads(draft)["title"], result or "", int(time.time())))
+             return cursor.rowcount == 1
+ 
++    def expedition(self, direction):
++        with self.connect() as db:
++            db.row_factory = sqlite3.Row
++            row = db.execute("SELECT * FROM expedition WHERE direction=?", (direction,)).fetchone()
++        return dict(row) if row else dict(direction=direction, completed_actions=0, supplies=0,
++                                          campfire_level=0, shelter_level=0, lookout_level=0)
++
++    def build(self, direction, building):
++        if building not in ("campfire", "shelter", "lookout"):
++            raise ValueError("未知营地建筑")
++        column = building + "_level"
++        with self.connect() as db:
++            db.execute("INSERT OR IGNORE INTO expedition(direction) VALUES(?)", (direction,))
++            row = db.execute(f"SELECT {column} FROM expedition WHERE direction=?", (direction,)).fetchone()
++            if row[0] >= 3:
++                return False
++            cost = row[0] + 2
++            changed = db.execute(f"UPDATE expedition SET supplies=supplies-?, {column}={column}+1 "
++                                 "WHERE direction=? AND supplies>=?", (cost, direction, cost))
++            return changed.rowcount == 1
++
++    def artifacts(self, direction, limit=30):
++        with self.connect() as db:
++            db.row_factory = sqlite3.Row
++            rows = db.execute("SELECT title,content,created_at FROM artifact WHERE direction=? "
++                              "ORDER BY created_at DESC,quest_id DESC LIMIT ?", (direction, limit)).fetchall()
++        return [dict(row) for row in rows]
++
+     def reject(self, quest_id, reason):
+         with self.connect() as db:
+             cursor = db.execute("UPDATE quest SET status='ABANDONED' "
+diff --git a/desktop/tests/test_desktop.py b/desktop/tests/test_desktop.py
+index 7324a00..5b9f867 100644
+--- a/desktop/tests/test_desktop.py
++++ b/desktop/tests/test_desktop.py
+@@ -68,6 +68,41 @@ class DesktopTest(unittest.TestCase):
+             self.assertTrue(generate("每天阅读", "", CONDITIONS, [], [])["steps"])
+             request.assert_not_called()
+ 
++    def test_expedition_rewards_once_and_preserves_artifacts(self):
++        with tempfile.TemporaryDirectory() as folder:
++            path = Path(folder) / "quest.db"
++            store = Store(path)
++            draft = generate("每天阅读", "", CONDITIONS, [], [])
++            for index in range(2):
++                quest = store.create_quest("每天阅读", "", CONDITIONS, draft)
++                self.assertTrue(store.transition(quest, "PENDING", "ACTIVE"))
++                self.assertTrue(store.transition(quest, "ACTIVE", "COMPLETED", f"记下第 {index + 1} 条笔记"))
++                self.assertFalse(store.transition(quest, "ACTIVE", "COMPLETED", "重复提交"))
++            self.assertEqual(Store(path).expedition("每天阅读")["completed_actions"], 2)
++            self.assertEqual(store.expedition("每天阅读")["supplies"], 2)
++            self.assertEqual(len(store.artifacts("每天阅读")), 2)
++            self.assertIn("第 2 条", store.artifacts("每天阅读")[0]["content"])
++            self.assertTrue(store.build("每天阅读", "campfire"))
++            self.assertFalse(store.build("每天阅读", "campfire"))
++            self.assertEqual(Store(path).expedition("每天阅读")["campfire_level"], 1)
++            self.assertEqual(Store(path).expedition("每天阅读")["supplies"], 0)
++            self.assertEqual(Store(path).expedition("跑步")["completed_actions"], 0)
++
++    def test_old_completed_quest_backfills_expedition(self):
++        with tempfile.TemporaryDirectory() as folder:
++            path = Path(folder) / "quest.db"
++            store = Store(path)
++            quest = store.create_quest("跑步", "", CONDITIONS, generate("跑步", "", CONDITIONS, [], []))
++            store.transition(quest, "PENDING", "ACTIVE")
++            store.transition(quest, "ACTIVE", "COMPLETED", "慢跑五分钟")
++            with store.connect() as db:
++                db.execute("DROP TABLE artifact")
++                db.execute("DROP TABLE expedition")
++            reopened = Store(path)
++            self.assertEqual(reopened.expedition("跑步")["completed_actions"], 1)
++            self.assertEqual(reopened.artifacts("跑步")[0]["content"], "慢跑五分钟")
++            self.assertEqual(Store(path).expedition("跑步")["completed_actions"], 1)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
